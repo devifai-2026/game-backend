@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Your Login Details - SwaRas Academy</title>
+    <style>
+      body {
+        background-color: #f4f4f9;
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+      }
+
+      .email-wrapper {
+        max-width: 600px;
+        margin: 40px auto;
+        background-color: #ffffff;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      }
+
+      .email-header {
+        background: #4f1800;
+        color: white;
+        padding: 30px 20px 20px 20px;
+        text-align: center;
+      }
+
+      .email-header img {
+        max-height: 60px;
+        margin-bottom: 15px;
+      }
+
+      .email-header h1 {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 600;
+      }
+
+      .email-body {
+        padding: 30px;
+        color: #333;
+      }
+
+      .email-body h2 {
+        font-size: 20px;
+        color: #b7742a;
+        margin-bottom: 10px;
+      }
+
+      .email-body p {
+        font-size: 16px;
+        line-height: 1.6;
+      }
+
+      .login-box {
+        margin: 25px 0;
+        padding: 20px;
+        background-color: #f9f1e7;
+        border-radius: 8px;
+        border: 1px solid #b7742a66;
+      }
+
+      .login-box strong {
+        color: #b7742a;
+      }
+
+      .note {
+        font-size: 14px;
+        color: #777;
+        margin-top: 10px;
+      }
+
+      .email-footer {
+        background-color: #b7742a;
+        text-align: center;
+        padding: 20px;
+        font-size: 16px;
+        color: #fff;
+        line-height: 26px;
+      }
+
+      .email-footer a {
+        color: #fff;
+        text-decoration: none;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="email-wrapper">
+      <div class="email-header">
+        <a href="https://swarasacademy.com/"
+          ><img
+            src="https://swarasacademy.com/wp-content/uploads/2025/01/logo.png"
+            alt="SwaRas Logo"
+        /></a>
+        <h1>Your Login Information</h1>
+      </div>
+      <div class="email-body">
+        <h2>Dear [Student Name],</h2>
+        <p>
+          Thank you for joining <strong>SwaRas Music & Arts Academy</strong>.
+          Your account has been created successfully. Please find your login
+          credentials below:
+        </p>
+
+        <div class="login-box">
+          <p><strong>Username:</strong> {{USERNAME}}</p>
+          <p><strong>Password:</strong> {{PASSWORD}}</p>
+          <p>
+            <strong>Login URL:</strong>
+            <a href="https://portal.swarasacademy.com"
+              >https://portal.swarasacademy.com</a
+            >
+          </p>
+        </div>
+
+        <p>
+          We recommend changing your password after your first login for
+          security reasons.
+        </p>
+        <p>
+          If you did not register or have any questions, please contact us
+          immediately.
+        </p>
+
+        <p>Welcome again to our vibrant community of artists!</p>
+
+        <p>Best regards,<br /><strong>SwaRas Music & Arts Academy</strong></p>
+
+        <p class="note">
+          Need help? Email us at
+          <a href="mailto:support@swarasacademy.com"
+            >support@swarasacademy.com</a
+          >
+        </p>
+      </div>
+      <div class="email-footer">
+        &copy; 2025 SwaRas Music & Arts Academy <br />
+        <a href="https://swarasacademy.com" target="_blank"
+          >swarasacademy.com</a
+        >
+      </div>
+    </div>
+  </body>
+</html>
