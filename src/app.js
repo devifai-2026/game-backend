@@ -36,7 +36,7 @@ import splashRoutes from "./routes/splash/splash.routes.js";
 import userRoutes from "./routes/user/user.routes.js";
 
 // Use routes
-app.use("/api/v1//admin", adminRoutes);
+app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/animations", animationRoutes);
 app.use("/api/v1/gods", godRoutes);
