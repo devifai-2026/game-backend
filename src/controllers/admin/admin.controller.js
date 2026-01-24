@@ -247,6 +247,7 @@ export const forgotPassword = asyncHandler(async (req, res) => {
     }
 
     const admin = await Admin.findOne({ email });
+    console.log(admin)
     if (!admin) {
       // Return success even if admin not found (security best practice)
       return res

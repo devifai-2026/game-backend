@@ -1,0 +1,902 @@
+{
+  "info": {
+    "name": "Game API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Complete API collection for Swaras Academy backend"
+  },
+  "item": [
+    {
+      "name": "🟢 User Routes",
+      "item": [
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"John Doe\",\n    \"email\": \"john@example.com\",\n    \"phone\": \"+1234567890\",\n    \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "users", "register"]
+            }
+          }
+        },
+        {
+          "name": "Login User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"john@example.com\",\n    \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "users", "login"]
+            }
+          }
+        },
+        {
+          "name": "Get User Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/profile",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "users", "profile"]
+            }
+          }
+        },
+        {
+          "name": "Update User Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"John Updated\",\n    \"phone\": \"+9876543210\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/profile",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "users", "profile"]
+            }
+          }
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"currentPassword\": \"password123\",\n    \"newPassword\": \"newpassword456\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/change-password",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "users", "change-password"]
+            }
+          }
+        },
+        {
+          "name": "Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"john@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/forgot-password",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "users", "forgot-password"]
+            }
+          }
+        },
+        {
+          "name": "Verify OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"john@example.com\",\n    \"otp\": \"123456\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/verify-otp",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "users", "verify-otp"]
+            }
+          }
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"token\": \"{{reset_token}}\",\n    \"newPassword\": \"newpassword123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/reset-password",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "users", "reset-password"]
+            }
+          }
+        },
+        {
+          "name": "Logout User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/logout",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "users", "logout"]
+            }
+          }
+        },
+        {
+          "name": "Gallery - Upload",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"imageUrl\": \"https://example.com/image.jpg\",\n    \"imageName\": \"My Image\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/gallery",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "users", "gallery"]
+            }
+          }
+        },
+        {
+          "name": "Gallery - Get All",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/gallery",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "users", "gallery"]
+            }
+          }
+        },
+        {
+          "name": "Gallery - Delete",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/gallery/:imageId",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "users", "gallery", ":imageId"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔵 Admin Routes",
+      "item": [
+        {
+          "name": "Register Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Admin User\",\n    \"email\": \"admin@example.com\",\n    \"password\": \"admin123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1//admin/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "", "admin", "register"]
+            },
+            "description": "Note: Double slash in URL is intentional based on app.js"
+          }
+        },
+        {
+          "name": "Login Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"admin@example.com\",\n    \"password\": \"admin123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1//admin/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "", "admin", "login"]
+            }
+          }
+        },
+        {
+          "name": "Forgot Password (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"admin@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1//admin/forgot-password",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "", "admin", "forgot-password"]
+            }
+          }
+        },
+        {
+          "name": "Verify OTP (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"admin@example.com\",\n    \"otp\": \"123456\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1//admin/verify-otp",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "", "admin", "verify-otp"]
+            }
+          }
+        },
+        {
+          "name": "Reset Password (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"token\": \"{{admin_reset_token}}\",\n    \"newPassword\": \"newadminpassword\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1//admin/reset-password",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "", "admin", "reset-password"]
+            }
+          }
+        },
+        {
+          "name": "Get Admin Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1//admin/profile",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "", "admin", "profile"]
+            }
+          }
+        },
+        {
+          "name": "Update Admin Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Admin Updated\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1//admin/profile",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "", "admin", "profile"]
+            }
+          }
+        },
+        {
+          "name": "Change Admin Password",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"currentPassword\": \"admin123\",\n    \"newPassword\": \"newadmin456\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1//admin/change-password",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "", "admin", "change-password"]
+            }
+          }
+        },
+        {
+          "name": "Logout Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1//admin/logout",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "", "admin", "logout"]
+            }
+          }
+        },
+        {
+          "name": "Get All Admins",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1//admin/all",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "", "admin", "all"]
+            }
+          }
+        },
+        {
+          "name": "Update Admin Status",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"isActive\": false\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1//admin/:id/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "", "admin", ":id", "status"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🟡 Splash Routes",
+      "item": [
+        {
+          "name": "Get Active Splash (Public)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/splash/active",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "splash", "active"]
+            }
+          }
+        },
+        {
+          "name": "Create Splash",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"image\": \"https://example.com/splash1.jpg\",\n    \"serialNo\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/splash",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "splash"]
+            }
+          }
+        },
+        {
+          "name": "Get All Splash",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/splash",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "splash"]
+            }
+          }
+        },
+        {
+          "name": "Update Splash",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"image\": \"https://example.com/splash-updated.jpg\",\n    \"serialNo\": 2,\n    \"isActive\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/splash/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "splash", ":id"]
+            }
+          }
+        },
+        {
+          "name": "Delete Splash",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/v1/splash/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "splash", ":id"]
+            }
+          }
+        },
+        {
+          "name": "Toggle Splash Status",
+          "request": {
+            "method": "PATCH",
+            "url": {
+              "raw": "{{base_url}}/api/v1/splash/:id/toggle",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "splash", ":id", "toggle"]
+            }
+          }
+        },
+        {
+          "name": "Update Splash Order",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"updates\": [\n        {\n            \"id\": \"splash_id_1\",\n            \"order\": 1\n        },\n        {\n            \"id\": \"splash_id_2\",\n            \"order\": 2\n        }\n    ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/splash/order/update",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "splash", "order", "update"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🟣 God Routes",
+      "item": [
+        {
+          "name": "Get All Gods (Public)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/gods",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "gods"]
+            },
+            "description": "Optional query params: ?search=krishna&page=1&limit=10"
+          }
+        },
+        {
+          "name": "Search Gods",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/gods/search?query=krishna",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "gods", "search"],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "krishna"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get God by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/gods/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "gods", ":id"]
+            }
+          }
+        },
+        {
+          "name": "Create God",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Lord Krishna\",\n    \"image\": \"https://example.com/krishna.jpg\",\n    \"description\": \"Eighth avatar of Lord Vishnu\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/gods",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "gods"]
+            }
+          }
+        },
+        {
+          "name": "Update God",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Krishna Bhagwan\",\n    \"image\": \"https://example.com/krishna-new.jpg\",\n    \"description\": \"Updated description\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/gods/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "gods", ":id"]
+            }
+          }
+        },
+        {
+          "name": "Delete God",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/v1/gods/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "gods", ":id"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🟠 Animation Routes",
+      "item": [
+        {
+          "name": "Get Active Animations (Public)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/animations/active",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "animations", "active"]
+            }
+          }
+        },
+        {
+          "name": "Get Animation by Category",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/animations/category/pouring_water_milk",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "animations", "category", "pouring_water_milk"]
+            },
+            "description": "Categories: pouring_water_milk, flower_showers, lighting_lamp, offerings_fruits_sweets"
+          }
+        },
+        {
+          "name": "Get Animation by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/animations/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "animations", ":id"]
+            }
+          }
+        },
+        {
+          "name": "Get All Animations",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/animations",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "animations"]
+            }
+          }
+        },
+        {
+          "name": "Create Animation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"category\": \"pouring_water_milk\",\n    \"title\": \"Water Pouring Animation\",\n    \"description\": \"Beautiful animation of water pouring\",\n    \"image\": \"https://example.com/water-pour.jpg\",\n    \"videoUrl\": \"https://example.com/water-pour.mp4\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/animations",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "animations"]
+            }
+          }
+        },
+        {
+          "name": "Update Animation",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"title\": \"Updated Title\",\n    \"description\": \"Updated description\",\n    \"isActive\": true,\n    \"order\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/animations/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "animations", ":id"]
+            }
+          }
+        },
+        {
+          "name": "Delete Animation",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/v1/animations/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "animations", ":id"]
+            }
+          }
+        },
+        {
+          "name": "Toggle Animation Status",
+          "request": {
+            "method": "PATCH",
+            "url": {
+              "raw": "{{base_url}}/api/v1/animations/:id/toggle",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "animations", ":id", "toggle"]
+            }
+          }
+        },
+        {
+          "name": "Update Animation Order",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"updates\": [\n        {\n            \"id\": \"animation_id_1\",\n            \"order\": 1\n        },\n        {\n            \"id\": \"animation_id_2\",\n            \"order\": 2\n        }\n    ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/animations/order/update",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "animations", "order", "update"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "user_token",
+      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "type": "string",
+      "description": "Add user token after login"
+    },
+    {
+      "key": "admin_token",
+      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "type": "string",
+      "description": "Add admin token after login"
+    },
+    {
+      "key": "reset_token",
+      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "type": "string",
+      "description": "User reset token from verify OTP"
+    },
+    {
+      "key": "admin_reset_token",
+      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "type": "string",
+      "description": "Admin reset token from verify OTP"
+    }
+  ],
+  "auth": null,
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": ["// Pre-request script if needed"]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Tests to run after each request",
+          "pm.test(\"Status code is 200\", function () {",
+          "    pm.response.to.have.status(200);",
+          "});",
+          "",
+          "pm.test(\"Response has success message\", function () {",
+          "    const jsonData = pm.response.json();",
+          "    pm.expect(jsonData.message).to.be.a('string');",
+          "});"
+        ]
+      }
+    }
+  ]
+}
