@@ -251,12 +251,12 @@ export const forgotPassword = asyncHandler(async (req, res) => {
     if (!admin) {
       // Return success even if admin not found (security best practice)
       return res
-        .status(200)
+        .status(404)
         .json(
           new ApiResponse(
-            200,
+            404,
             null,
-            "If an account exists with this email, you will receive a password reset OTP",
+            "Admin with this email does not exist",
           ),
         );
     }

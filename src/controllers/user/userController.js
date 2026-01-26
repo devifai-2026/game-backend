@@ -315,12 +315,12 @@ export const forgotUserPassword = asyncHandler(async (req, res) => {
     if (!user) {
       // Return success even if user not found (security best practice)
       return res
-        .status(200)
+        .status(404)
         .json(
           new ApiResponse(
-            200,
+            404,
             null,
-            "If an account exists with this email, you will receive a password reset OTP"
+            "User with this email does not exist",
           )
         );
     }
