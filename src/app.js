@@ -32,6 +32,7 @@ app.use(express.static("public"));
 import adminRoutes from "./routes/admin/admin.routes.js";
 import animationRoutes from "./routes/animations/animations.routes.js";
 import godRoutes from "./routes/god/god.routes.js";
+import godIdolRoutes from "./routes/godIdol/godIdol.routes.js";
 import splashRoutes from "./routes/splash/splash.routes.js";
 import userRoutes from "./routes/user/user.routes.js";
 
@@ -40,11 +41,12 @@ app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/animations", animationRoutes);
 app.use("/api/v1/gods", godRoutes);
+app.use("/api/v1/god-idol", godIdolRoutes);
 app.use("/api/v1/splash", splashRoutes);
 
 // Home route
 app.get("/", (req, res) => {
-  res.send("Welcome To Swaras Academy API!");
+  res.send("Welcome To Game API!");
 });
 
 export default app;

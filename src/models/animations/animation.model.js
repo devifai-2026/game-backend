@@ -1,5 +1,16 @@
 import mongoose from "mongoose";
 
+// Sub-schema for multiple images - removed url field, only store key
+const animationImageSchema = new mongoose.Schema(
+  {
+    key: { type: String, required: true, unique: true },
+    order: { type: Number, default: 0 },
+    filename: String,
+    size: Number,
+  },
+  { _id: true, timestamps: true },
+);
+
 const animationSchema = new mongoose.Schema(
   {
     category: {
@@ -12,25 +23,17 @@ const animationSchema = new mongoose.Schema(
         "offerings_fruits_sweets",
       ],
       trim: true,
-      unique: true, // Each category should have only one entry
+      unique: true,
     },
     title: {
       type: String,
       required: true,
       trim: true,
     },
-    description: {
-      type: String,
-      trim: true,
-    },
-    image: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    videoUrl: {
-      type: String,
-      trim: true,
+    images: [animationImageSchema],
+    totalImages: {
+      type: Number,
+      default: 0,
     },
     isActive: {
       type: Boolean,
@@ -45,7 +48,14 @@ const animationSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-// Index for ordering and searching
+// Update totalImages before saving
+animationSchema.pre("save", function (next) {
+  this.totalImages = this.images.length;
+  next();
+});
+
+// Indexes for better performance
 animationSchema.index({ order: 1, category: 1 });
+animationSchema.index({ isActive: 1, order: 1 });
 
 export const Animation = mongoose.model("Animation", animationSchema);

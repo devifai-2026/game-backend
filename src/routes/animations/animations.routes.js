@@ -1,27 +1,31 @@
 import express from "express";
 import {
-  createAnimation,
+  uploadAnimationZip,
   getAllAnimations,
   getActiveAnimations,
   getAnimationById,
   getAnimationByCategory,
+  createAnimation,
   updateAnimation,
-  updateAnimationOrder,
   deleteAnimation,
   toggleAnimationStatus,
 } from "../../controllers/animations/animations.controller.js";
 
 const router = express.Router();
 
+// Upload route
+router.post("/upload-zip", uploadAnimationZip);
+
+// Public routes
 router.get("/active", getActiveAnimations);
 router.get("/category/:category", getAnimationByCategory);
-router.get("/:id", getAnimationById);
-router.get("/", getAllAnimations);
 
+// CRUD routes
+router.get("/", getAllAnimations);
+router.get("/:id", getAnimationById);
 router.post("/", createAnimation);
 router.put("/:id", updateAnimation);
 router.delete("/:id", deleteAnimation);
 router.patch("/:id/toggle", toggleAnimationStatus);
-router.patch("/order/update", updateAnimationOrder);
 
 export default router;
