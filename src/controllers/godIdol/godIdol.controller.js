@@ -1,455 +1,612 @@
-import { s3Client, S3_BUCKET } from "../../../config/aws.config.js";
-import { PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { 
+  s3Client, 
+  S3_BUCKET, 
+  PutObjectCommand,
+  DeleteObjectCommand,
+  GetObjectCommand 
+} from "../../../config/aws.config.js";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { God } from "../../models/god/god.model.js";
 import { GodIdol } from "../../models/godIdol/godIdol.model.js";
-import yauzl from "yauzl";
-import path from "path";
+import { God } from "../../models/god/god.model.js";
+import ApiResponse from "../../utils/ApiResponse.js";
+import { asyncHandler } from "../../utils/asyncHandler.js";
 import busboy from "busboy";
+import path from "path";
 
-// ==================== UPLOAD SECTION (Same as before) ====================
+// ==================== CREATE GOD IDOL VIDEO ====================
+export const createGodIdol = asyncHandler(async (req, res) => {
+  const bb = busboy({ 
+    headers: req.headers, 
+    limits: { 
+      files: 1, 
+      fileSize: 100 * 1024 * 1024 // 100MB
+    } 
+  });
+  
+  const fields = {};
+  let videoFile = null;
+  let uploadError = null;
+  let responseSent = false;
+  
+  // Create a promise to track file upload completion
+  let fileUploadResolve, fileUploadReject;
+  const fileUploadPromise = new Promise((resolve, reject) => {
+    fileUploadResolve = resolve;
+    fileUploadReject = reject;
+  });
 
-export const uploadAndProcessZip = async (req, res) => {
-  try {
-    const bb = busboy({ headers: req.headers });
-    let godId = null;
-    let god = null;
-    let godIdol = null;
-    let zipBuffer = null;
-    let responseSent = false;
+  // Fields collection
+  bb.on('field', (fieldname, val) => {
+    fields[fieldname] = val;
+  });
 
-    const sendResponse = (statusCode, data) => {
-      if (!responseSent) {
-        responseSent = true;
-        res.status(statusCode).json(data);
-      }
-    };
-
-    bb.on("field", (name, val) => {
-      if (name === "godId") godId = val;
-    });
-
-    bb.on("file", (name, file, info) => {
-      const { filename } = info;
-
-      if (!filename.endsWith(".zip")) {
-        return sendResponse(400, { error: "Only ZIP files allowed" });
-      }
-
-      const chunks = [];
-      file.on("data", (chunk) => chunks.push(chunk));
-
-      file.on("end", () => {
-        zipBuffer = Buffer.concat(chunks);
-      });
-
-      file.on("error", (err) => {
-        console.error("File stream error:", err);
-        sendResponse(500, { error: "File upload failed" });
-      });
-    });
-
-    bb.on("close", async () => {
-      try {
-        if (!godId) {
-          return sendResponse(400, { error: "godId required" });
-        }
-
-        if (!zipBuffer) {
-          return sendResponse(400, { error: "No file uploaded" });
-        }
-
-        god = await God.findById(godId);
-        if (!god) {
-          return sendResponse(404, { error: "God not found" });
-        }
-
-        const folderName = god.name.toLowerCase().replace(/\s+/g, "-");
-        godIdol = await GodIdol.findOne({ godId });
-
-        if (!godIdol) {
-          godIdol = new GodIdol({
-            godId,
-            folderName,
-            images: [],
-            totalImages: 0,
-          });
-        } else {
-          godIdol.images = [];
-          godIdol.totalImages = 0;
-        }
-
-        console.log("📦 Processing ZIP file...");
-        const images = await processZipBuffer(zipBuffer, folderName, S3_BUCKET);
-
-        godIdol.images = images;
-        godIdol.totalImages = images.length;
-        await godIdol.save();
-
-        console.log(`✅ Successfully processed ${images.length} images`);
-
-        sendResponse(200, {
-          success: true,
-          message: `Processed ${images.length} images`,
-          godIdol,
-        });
-      } catch (error) {
-        console.error("❌ Processing error:", error);
-        sendResponse(500, { error: error.message });
-      }
-    });
-
-    bb.on("error", (err) => {
-      console.error("Busboy error:", err);
-      sendResponse(500, { error: "Upload processing failed" });
-    });
-
-    req.pipe(bb);
-  } catch (error) {
-    console.error("❌ Upload error:", error);
-    if (!res.headersSent) {
-      res.status(500).json({ error: error.message });
+  bb.on('file', (fieldname, fileStream, info) => {
+    const { godId } = fields;
+    
+    if (!godId) {
+      uploadError = new Error("godId is required");
+      fileStream.resume();
+      fileUploadReject(uploadError);
+      return;
     }
-  }
-};
 
-// Process ZIP buffer and upload to S3
-async function processZipBuffer(zipBuffer, folderName, bucket) {
-  return new Promise((resolve, reject) => {
-    const images = [];
-    let processedCount = 0;
+    const objectIdPattern = /^[0-9a-fA-F]{24}$/;
+    if (!objectIdPattern.test(godId)) {
+      uploadError = new Error("Invalid godId format - must be a valid MongoDB ObjectId");
+      fileStream.resume();
+      fileUploadReject(uploadError);
+      return;
+    }
 
-    yauzl.fromBuffer(zipBuffer, { lazyEntries: true }, (err, zipfile) => {
-      if (err) {
-        console.error("❌ Failed to open ZIP:", err);
-        return reject(err);
-      }
+    // File type validation
+    const { filename, mimeType } = info;
+    if (!mimeType.startsWith('video/')) {
+      uploadError = new Error("Only video files are allowed");
+      fileStream.resume();
+      fileUploadReject(uploadError);
+      return;
+    }
 
-      zipfile.readEntry();
+    // Generate unique filename
+    const timestamp = Date.now();
+    const randomString = Math.random().toString(36).substring(2, 10);
+    const ext = path.extname(filename);
+    const basename = path.basename(filename, ext).replace(/[^a-zA-Z0-9]/g, '-');
+    const key = `god-idol/${basename}-${timestamp}-${randomString}${ext}`;
 
-      zipfile.on("entry", (entry) => {
-        const ext = path.extname(entry.fileName).toLowerCase();
-        const isImage = [".jpg", ".jpeg", ".png", ".gif", ".webp"].includes(
-          ext,
-        );
-
-        if (
-          !isImage ||
-          entry.fileName.startsWith("__MACOSX") ||
-          entry.fileName.startsWith(".")
-        ) {
-          zipfile.readEntry();
+    // Collect file data in buffer
+    const chunks = [];
+    fileStream.on('data', (chunk) => chunks.push(chunk));
+    
+    fileStream.on('end', async () => {
+      try {
+        // Check if god exists
+        const godExists = await God.findById(godId);
+        
+        if (!godExists) {
+          uploadError = new Error("God not found with the provided godId");
+          fileUploadReject(uploadError);
           return;
         }
 
-        zipfile.openReadStream(entry, async (err, readStream) => {
-          if (err) {
-            console.error(`❌ Error reading ${entry.fileName}:`, err);
-            zipfile.readEntry();
-            return;
-          }
+        // Check if video already exists for this god
+        const existingIdol = await GodIdol.findOne({ godId });
+        if (existingIdol) {
+          uploadError = new Error("Idol video already exists for this god");
+          fileUploadReject(uploadError);
+          return;
+        }
 
-          const chunks = [];
-
-          readStream.on("data", (chunk) => chunks.push(chunk));
-
-          readStream.on("end", async () => {
-            try {
-              const imageBuffer = Buffer.concat(chunks);
-              const cleanFileName = entry.fileName.split("/").pop();
-
-              const orderNumber = String(processedCount + 1).padStart(3, "0");
-              const s3Key = `godIdol/${folderName}/${orderNumber}_${cleanFileName}`;
-
-              // Upload to S3
-              await s3Client.send(
-                new PutObjectCommand({
-                  Bucket: bucket,
-                  Key: s3Key,
-                  Body: imageBuffer,
-                  ContentType: `image/${ext.replace(".", "")}`,
-                  CacheControl: "public, max-age=31536000",
-                }),
-              );
-
-              // Store the S3 key, NOT the public URL
-              images.push({
-                key: s3Key, // Only store the key, not the public URL
-                order: processedCount + 1,
-                filename: cleanFileName,
-                size: imageBuffer.length,
-                uploadedAt: new Date(),
-              });
-
-              processedCount++;
-              console.log(`✅ Uploaded (${processedCount}): ${cleanFileName}`);
-
-              zipfile.readEntry();
-            } catch (error) {
-              console.error(`❌ Upload error for ${entry.fileName}:`, error);
-              zipfile.readEntry();
-            }
-          });
-
-          readStream.on("error", (streamError) => {
-            console.error(
-              `❌ Stream error for ${entry.fileName}:`,
-              streamError,
-            );
-            zipfile.readEntry();
-          });
+        const fileBuffer = Buffer.concat(chunks);
+        
+        const command = new PutObjectCommand({
+          Bucket: S3_BUCKET,
+          Key: key,
+          Body: fileBuffer,
+          ContentType: mimeType,
         });
-      });
 
-      zipfile.on("end", () => {
-        images.sort((a, b) => a.order - b.order);
-        console.log(
-          `🎉 ZIP processing complete: ${images.length} images processed`,
-        );
-        resolve(images);
-      });
+        const result = await s3Client.send(command);
+        
+        videoFile = {
+          key,
+          url: `https://${S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`,
+          filename,
+          size: fileBuffer.length,
+          mimeType,
+          etag: result.ETag,
+        };
 
-      zipfile.on("error", (zipError) => {
-        console.error("❌ ZIP error:", zipError);
-        reject(zipError);
-      });
+        console.log("God Idol video uploaded successfully:", key);
+        fileUploadResolve();
+      } catch (error) {
+        console.error("S3 upload error:", error);
+        uploadError = error;
+        fileUploadReject(error);
+      }
+    });
+
+    fileStream.on('error', (error) => {
+      uploadError = error;
+      fileUploadReject(error);
     });
   });
-}
 
-// ==================== PRESIGNED URL FUNCTIONS ====================
+  // Handle finish event
+  bb.on('finish', async () => {
+    if (responseSent) return;
 
-/**
- * Generate a presigned URL for a single S3 key
- * @param {string} key - S3 object key
- * @param {number} expiresIn - URL expiry time in seconds (default: 3600 = 1 hour)
- */
-export const generatePresignedUrl = async (key, expiresIn = 3600) => {
-  try {
-    const command = new GetObjectCommand({
-      Bucket: S3_BUCKET,
-      Key: key,
-    });
+    try {
+      // Wait for file upload to complete
+      await fileUploadPromise;
 
-    const url = await getSignedUrl(s3Client, command, { expiresIn });
-    return url;
-  } catch (error) {
-    console.error("Error generating presigned URL:", error);
-    throw error;
-  }
-};
+      if (uploadError) {
+        responseSent = true;
+        return res.status(400).json(
+          new ApiResponse(400, null, uploadError.message)
+        );
+      }
 
-/**
- * Get presigned URL for a single image by its ID
- */
-export const getPresignedImageUrl = async (req, res) => {
-  try {
-    const { imageId } = req.params;
-    const { expiresIn = 3600 } = req.query; // Optional expiry parameter
+      const { godId, isActive } = fields;
 
-    // Find the image across all GodIdol documents
-    const godIdol = await GodIdol.findOne({ "images._id": imageId });
-    
-    if (!godIdol) {
-      return res.status(404).json({ error: "Image not found" });
-    }
-
-    const image = godIdol.images.id(imageId);
-    
-    if (!image || !image.key) {
-      return res.status(404).json({ error: "Image key not found" });
-    }
-
-    // Generate presigned URL
-    const url = await generatePresignedUrl(image.key, parseInt(expiresIn));
-
-    res.json({
-      success: true,
-      url,
-      key: image.key,
-      expiresIn: parseInt(expiresIn),
-      expiresAt: new Date(Date.now() + parseInt(expiresIn) * 1000),
-    });
-
-  } catch (error) {
-    console.error("❌ Error generating presigned URL:", error);
-    res.status(500).json({ error: error.message });
-  }
-};
-
-/**
- * Get images with presigned URLs (modified version of getGodIdolImages)
- */
-export const getGodIdolImagesWithUrls = async (req, res) => {
-  try {
-    const { godId } = req.params;
-    const { expiresIn = 3600 } = req.query; // Optional expiry parameter
-
-    if (!godId) {
-      return res.status(400).json({ error: "godId is required" });
-    }
-
-    const god = await God.findById(godId);
-    if (!god) {
-      return res.status(404).json({ error: "God not found" });
-    }
-
-    const godIdol = await GodIdol.findOne({ godId });
-
-    if (!godIdol) {
-      return res.status(404).json({
-        error: "No images found for this god",
+      // Remove folderName from creation
+      const godIdol = await GodIdol.create({
         godId,
-        godName: god.name,
+        video: {
+          key: videoFile.key,
+          url: videoFile.url,
+          filename: videoFile.filename,
+          size: videoFile.size,
+          uploadedAt: new Date(),
+        },
+        isActive: isActive === 'true' || isActive === true,
       });
+
+      responseSent = true;
+      return res.status(201).json(
+        new ApiResponse(201, godIdol, "God idol video created successfully")
+      );
+      
+    } catch (error) {
+      // Cleanup if database error occurs
+      if (videoFile?.key) {
+        try {
+          await s3Client.send(new DeleteObjectCommand({
+            Bucket: S3_BUCKET,
+            Key: videoFile.key,
+          }));
+        } catch (cleanupError) {
+          console.error("Cleanup error:", cleanupError);
+        }
+      }
+
+      responseSent = true;
+      return res.status(500).json(
+        new ApiResponse(500, null, error.message || "File upload failed")
+      );
+    }
+  });
+
+  // Handle busboy error
+  bb.on('error', (error) => {
+    if (responseSent) return;
+    responseSent = true;
+    return res.status(500).json(
+      new ApiResponse(500, null, error.message)
+    );
+  });
+
+  // Pipe the request to busboy
+  req.pipe(bb);
+});
+
+// ==================== UPDATE GOD IDOL VIDEO ====================
+export const updateGodIdol = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  
+  // Find existing idol
+  const godIdol = await GodIdol.findById(id);
+  if (!godIdol) {
+    return res.status(404).json(
+      new ApiResponse(404, null, "God idol not found")
+    );
+  }
+
+  const bb = busboy({ 
+    headers: req.headers, 
+    limits: { 
+      files: 1, 
+      fileSize: 100 * 1024 * 1024 
+    } 
+  });
+  
+  const fields = {};
+  let videoFile = null;
+  let uploadError = null;
+  let responseSent = false;
+  
+  let fileUploadResolve, fileUploadReject;
+  const fileUploadPromise = new Promise((resolve, reject) => {
+    fileUploadResolve = resolve;
+    fileUploadReject = reject;
+  });
+
+  bb.on('field', (fieldname, val) => {
+    fields[fieldname] = val;
+  });
+
+  bb.on('file', (fieldname, fileStream, info) => {
+    const { filename, mimeType } = info;
+
+    if (!mimeType.startsWith('video/')) {
+      uploadError = new Error("Only video files are allowed");
+      fileStream.resume();
+      fileUploadReject(uploadError);
+      return;
     }
 
-    // Sort images by order
-    const sortedImages = godIdol.images.sort((a, b) => a.order - b.order);
+    const timestamp = Date.now();
+    const randomString = Math.random().toString(36).substring(2, 10);
+    const ext = path.extname(filename);
+    const basename = path.basename(filename, ext).replace(/[^a-zA-Z0-9]/g, '-');
+    const key = `god-idol/${basename}-${timestamp}-${randomString}${ext}`;
 
-    // Generate presigned URLs for all images
-    const imagesWithUrls = await Promise.all(
-      sortedImages.map(async (img) => {
-        const url = await generatePresignedUrl(img.key, parseInt(expiresIn));
-        return {
-          id: img._id,
-          url, // This is the presigned URL
-          key: img.key,
-          order: img.order,
-          filename: img.filename,
-          size: img.size,
-          uploadedAt: img.uploadedAt || img.createdAt,
+    const chunks = [];
+    fileStream.on('data', (chunk) => chunks.push(chunk));
+    
+    fileStream.on('end', async () => {
+      try {
+        const fileBuffer = Buffer.concat(chunks);
+        
+        const command = new PutObjectCommand({
+          Bucket: S3_BUCKET,
+          Key: key,
+          Body: fileBuffer,
+          ContentType: mimeType,
+        });
+
+        const result = await s3Client.send(command);
+        
+        videoFile = {
+          key,
+          url: `https://${S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`,
+          filename,
+          size: fileBuffer.length,
+          mimeType,
+          etag: result.ETag,
         };
+
+        console.log("New video uploaded successfully:", key);
+        fileUploadResolve();
+      } catch (error) {
+        console.error("S3 upload error:", error);
+        uploadError = error;
+        fileUploadReject(error);
+      }
+    });
+
+    fileStream.on('error', (error) => {
+      uploadError = error;
+      fileUploadReject(error);
+    });
+  });
+
+  bb.on('finish', async () => {
+    if (responseSent) return;
+
+    try {
+      // Only wait for file upload if there was a file
+      if (Object.keys(fields).length > 0 || videoFile) {
+        await fileUploadPromise;
+      }
+
+      if (uploadError) {
+        responseSent = true;
+        return res.status(500).json(
+          new ApiResponse(500, null, uploadError.message)
+        );
+      }
+
+      const { godId, isActive } = fields; // Removed folderName
+
+      // Check godId conflict
+      if (godId && godId.toString() !== godIdol.godId.toString()) {
+        const existing = await GodIdol.findOne({ godId });
+        if (existing) {
+          if (videoFile?.key) {
+            await s3Client.send(new DeleteObjectCommand({
+              Bucket: S3_BUCKET,
+              Key: videoFile.key,
+            }));
+          }
+
+          responseSent = true;
+          return res.status(409).json(
+            new ApiResponse(409, null, "Idol video already exists for this god")
+          );
+        }
+        godIdol.godId = godId;
+      }
+
+      // If new video uploaded
+      if (videoFile) {
+        // Delete old video from S3
+        if (godIdol.video.key) {
+          try {
+            await s3Client.send(new DeleteObjectCommand({
+              Bucket: S3_BUCKET,
+              Key: godIdol.video.key,
+            }));
+            console.log("Old video deleted from S3:", godIdol.video.key);
+          } catch (err) {
+            console.error("Error deleting old video:", err);
+          }
+        }
+        
+        // Update with new video
+        godIdol.video = {
+          key: videoFile.key,
+          url: videoFile.url,
+          filename: videoFile.filename,
+          size: videoFile.size,
+          uploadedAt: new Date(),
+        };
+      }
+      
+      // Update other fields (folderName removed)
+      if (isActive !== undefined) godIdol.isActive = isActive === 'true' || isActive === true;
+
+      await godIdol.save();
+
+      responseSent = true;
+      return res.status(200).json(
+        new ApiResponse(200, godIdol, "God idol updated successfully")
+      );
+    } catch (error) {
+      responseSent = true;
+      return res.status(500).json(
+        new ApiResponse(500, null, error.message || "Update failed")
+      );
+    }
+  });
+
+  bb.on('error', (error) => {
+    if (responseSent) return;
+    responseSent = true;
+    return res.status(500).json(
+      new ApiResponse(500, null, error.message)
+    );
+  });
+
+  req.pipe(bb);
+});
+
+// ==================== DELETE GOD IDOL ====================
+export const deleteGodIdol = asyncHandler(async (req, res) => {
+  try {
+    const { id } = req.params;
+    const godIdol = await GodIdol.findById(id);
+    
+    if (!godIdol) {
+      return res.status(404).json(
+        new ApiResponse(404, null, "God idol not found")
+      );
+    }
+
+    // Delete video from S3
+    if (godIdol.video && godIdol.video.key) {
+      try {
+        await s3Client.send(new DeleteObjectCommand({
+          Bucket: S3_BUCKET,
+          Key: godIdol.video.key,
+        }));
+        console.log("Video deleted from S3:", godIdol.video.key);
+      } catch (err) {
+        console.error("Error deleting video from S3:", err);
+      }
+    }
+
+    await godIdol.deleteOne();
+    
+    return res.status(200).json(
+      new ApiResponse(200, null, "God idol deleted successfully")
+    );
+  } catch (error) {
+    return res.status(500).json(
+      new ApiResponse(500, null, error.message)
+    );
+  }
+});
+
+// ==================== GET ALL GOD IDOLS WITH SIGNED URLS ====================
+export const getAllGodIdols = asyncHandler(async (req, res) => {
+  try {
+    const godIdols = await GodIdol.find()
+      .populate('godId', 'name category')
+      .sort({ createdAt: -1 });
+    
+    // Generate pre-signed URLs
+    const idolsWithUrls = await Promise.all(
+      godIdols.map(async (idol) => {
+        const idolObj = idol.toObject();
+        
+        try {
+          const command = new GetObjectCommand({
+            Bucket: S3_BUCKET,
+            Key: idol.video.key,
+          });
+          
+          const signedUrl = await getSignedUrl(s3Client, command, { 
+            expiresIn: 3600 // 1 hour
+          });
+          
+          idolObj.video.signedUrl = signedUrl;
+          
+        } catch (urlError) {
+          console.error("Error generating signed URL for:", idol.video.key, urlError);
+          idolObj.video.signedUrl = null;
+        }
+        
+        return idolObj;
       })
     );
-
-    const response = {
-      success: true,
-      god: {
-        id: god._id,
-        name: god.name,
-        image: god.image,
-        description: god.description,
-      },
-      folderName: godIdol.folderName,
-      totalImages: godIdol.totalImages,
-      images: imagesWithUrls,
-      urlExpiry: {
-        expiresIn: parseInt(expiresIn),
-        expiresAt: new Date(Date.now() + parseInt(expiresIn) * 1000),
-      },
-      metadata: {
-        totalCount: godIdol.totalImages,
-        returnedCount: sortedImages.length,
-        lastUpdated: godIdol.updatedAt,
-      },
-    };
-
-    res.status(200).json(response);
+    
+    return res.status(200).json(
+      new ApiResponse(200, idolsWithUrls, "God idols fetched successfully")
+    );
   } catch (error) {
-    console.error("❌ Error fetching god idol images:", error);
-    res.status(500).json({ error: error.message });
+    return res.status(500).json(
+      new ApiResponse(500, null, error.message)
+    );
   }
-};
+});
 
-/**
- * Get paginated images with presigned URLs
- */
-export const getGodIdolImagesPaginatedWithUrls = async (req, res) => {
+// ==================== GET GOD IDOL BY ID WITH SIGNED URL ====================
+export const getGodIdolById = asyncHandler(async (req, res) => {
+  try {
+    const { id } = req.params;
+    const godIdol = await GodIdol.findById(id).populate('godId', 'name category');
+    
+    if (!godIdol) {
+      return res.status(404).json(
+        new ApiResponse(404, null, "God idol not found")
+      );
+    }
+    
+    const idolObj = godIdol.toObject();
+    
+    // Generate pre-signed URL
+    try {
+      const command = new GetObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: godIdol.video.key,
+      });
+      
+      const signedUrl = await getSignedUrl(s3Client, command, { 
+        expiresIn: 3600 
+      });
+      
+      idolObj.video.signedUrl = signedUrl;
+    } catch (urlError) {
+      console.error("Error generating signed URL:", urlError);
+      idolObj.video.signedUrl = null;
+    }
+    
+    return res.status(200).json(
+      new ApiResponse(200, idolObj, "God idol fetched successfully")
+    );
+  } catch (error) {
+    return res.status(500).json(
+      new ApiResponse(500, null, error.message)
+    );
+  }
+});
+
+// ==================== GET GOD IDOL BY GOD ID ====================
+export const getGodIdolByGodId = asyncHandler(async (req, res) => {
   try {
     const { godId } = req.params;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const expiresIn = parseInt(req.query.expiresIn) || 3600;
-    const skip = (page - 1) * limit;
-
-    const god = await God.findById(godId);
-    if (!god) {
-      return res.status(404).json({ error: "God not found" });
-    }
-
-    const godIdol = await GodIdol.findOne({ godId });
-
+    const godIdol = await GodIdol.findOne({ godId }).populate('godId', 'name category');
+    
     if (!godIdol) {
-      return res.status(404).json({ error: "No images found" });
+      return res.status(404).json(
+        new ApiResponse(404, null, "God idol not found for this god")
+      );
     }
-
-    // Get paginated images
-    const totalImages = godIdol.images.length;
-    const paginatedImages = godIdol.images
-      .sort((a, b) => a.order - b.order)
-      .slice(skip, skip + limit);
-
-    // Generate presigned URLs for paginated images
-    const imagesWithUrls = await Promise.all(
-      paginatedImages.map(async (img) => {
-        const url = await generatePresignedUrl(img.key, expiresIn);
-        return {
-          id: img._id,
-          url,
-          key: img.key,
-          order: img.order,
-          filename: img.filename,
-          size: img.size,
-        };
-      })
+    
+    const idolObj = godIdol.toObject();
+    
+    // Generate pre-signed URL
+    try {
+      const command = new GetObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: godIdol.video.key,
+      });
+      
+      const signedUrl = await getSignedUrl(s3Client, command, { 
+        expiresIn: 3600 
+      });
+      
+      idolObj.video.signedUrl = signedUrl;
+    } catch (urlError) {
+      console.error("Error generating signed URL:", urlError);
+      idolObj.video.signedUrl = null;
+    }
+    
+    return res.status(200).json(
+      new ApiResponse(200, idolObj, "God idol fetched successfully")
     );
-
-    res.status(200).json({
-      success: true,
-      god: {
-        id: god._id,
-        name: god.name,
-      },
-      pagination: {
-        page,
-        limit,
-        totalImages,
-        totalPages: Math.ceil(totalImages / limit),
-        hasNextPage: page < Math.ceil(totalImages / limit),
-        hasPrevPage: page > 1,
-      },
-      images: imagesWithUrls,
-      urlExpiry: {
-        expiresIn,
-        expiresAt: new Date(Date.now() + expiresIn * 1000),
-      },
-    });
   } catch (error) {
-    console.error("❌ Error:", error);
-    res.status(500).json({ error: error.message });
+    return res.status(500).json(
+      new ApiResponse(500, null, error.message)
+    );
   }
-};
+});
 
-/**
- * Batch generate presigned URLs for multiple keys
- */
-export const batchGeneratePresignedUrls = async (req, res) => {
+// ==================== GET ACTIVE GOD IDOLS ====================
+export const getActiveGodIdols = asyncHandler(async (req, res) => {
   try {
-    const { keys } = req.body;
-    const { expiresIn = 3600 } = req.query;
-
-    if (!keys || !Array.isArray(keys)) {
-      return res.status(400).json({ error: "keys array is required" });
-    }
-
-    const urls = await Promise.all(
-      keys.map(async (key) => {
-        const url = await generatePresignedUrl(key, parseInt(expiresIn));
-        return { key, url };
+    const godIdols = await GodIdol.find({ isActive: true })
+      .populate('godId', 'name category')
+      .sort({ createdAt: -1 });
+    
+    // Generate pre-signed URLs
+    const idolsWithUrls = await Promise.all(
+      godIdols.map(async (idol) => {
+        const idolObj = idol.toObject();
+        
+        try {
+          const command = new GetObjectCommand({
+            Bucket: S3_BUCKET,
+            Key: idol.video.key,
+          });
+          
+          const signedUrl = await getSignedUrl(s3Client, command, { 
+            expiresIn: 3600
+          });
+          
+          idolObj.video.signedUrl = signedUrl;
+          
+        } catch (urlError) {
+          console.error("Error generating signed URL:", urlError);
+          idolObj.video.signedUrl = null;
+        }
+        
+        return idolObj;
       })
     );
-
-    res.json({
-      success: true,
-      urls,
-      count: urls.length,
-      expiresIn: parseInt(expiresIn),
-      expiresAt: new Date(Date.now() + parseInt(expiresIn) * 1000),
-    });
-
+    
+    return res.status(200).json(
+      new ApiResponse(200, idolsWithUrls, "Active god idols fetched")
+    );
   } catch (error) {
-    console.error("❌ Error generating batch URLs:", error);
-    res.status(500).json({ error: error.message });
+    return res.status(500).json(
+      new ApiResponse(500, null, error.message)
+    );
   }
-};
+});
+
+// ==================== TOGGLE STATUS ====================
+export const toggleGodIdolStatus = asyncHandler(async (req, res) => {
+  try {
+    const { id } = req.params;
+    const godIdol = await GodIdol.findById(id);
+    
+    if (!godIdol) {
+      return res.status(404).json(
+        new ApiResponse(404, null, "God idol not found")
+      );
+    }
+
+    godIdol.isActive = !godIdol.isActive;
+    await godIdol.save();
+
+    return res.status(200).json(
+      new ApiResponse(200, godIdol, `God idol ${godIdol.isActive ? 'activated' : 'deactivated'}`)
+    );
+  } catch (error) {
+    return res.status(500).json(
+      new ApiResponse(500, null, error.message)
+    );
+  }
+});

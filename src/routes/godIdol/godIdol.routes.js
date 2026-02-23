@@ -1,25 +1,27 @@
 import express from "express";
-import { 
-  uploadAndProcessZip,
-  getGodIdolImagesWithUrls,
-  getGodIdolImagesPaginatedWithUrls,
-//   getSingleImage,
-  getPresignedImageUrl,
-  batchGeneratePresignedUrls
+import {
+  createGodIdol,
+  getAllGodIdols,
+  getActiveGodIdols,
+  getGodIdolById,
+  getGodIdolByGodId,
+  updateGodIdol,
+  deleteGodIdol,
+  toggleGodIdolStatus,
 } from "../../controllers/godIdol/godIdol.controller.js";
 
 const router = express.Router();
 
-// Upload route
-router.post("/upload-zip", uploadAndProcessZip);
+// Public routes
+router.get("/active", getActiveGodIdols);
+router.get("/god/:godId", getGodIdolByGodId); // Get by God ID
 
-// Presigned URL routes (RECOMMENDED - bucket can stay private)
-router.get('/:godId/images', getGodIdolImagesWithUrls);
-router.get('/:godId/images/paginated', getGodIdolImagesPaginatedWithUrls);
-router.get('/presigned/:imageId', getPresignedImageUrl);
-router.post('/presigned/batch', batchGeneratePresignedUrls);
-
-// Keep single image route if needed (but it will use the stored URL)
-// router.get('/:godId/images/:imageId', getSingleImage);
+// CRUD operations
+router.post("/", createGodIdol);
+router.get("/", getAllGodIdols);
+router.get("/:id", getGodIdolById);
+router.put("/:id", updateGodIdol);
+router.delete("/:id", deleteGodIdol);
+router.patch("/:id/toggle", toggleGodIdolStatus);
 
 export default router;

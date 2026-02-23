@@ -2,10 +2,30 @@ import mongoose from "mongoose";
 
 const splashSchema = new mongoose.Schema(
   {
-    image: {
-      type: String,
-      required: true,
-      trim: true,
+    video: {
+      key: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      url: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      filename: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      size: {
+        type: Number,
+        default: 0,
+      },
+      uploadedAt: {
+        type: Date,
+        default: Date.now,
+      },
     },
     serialNo: {
       type: Number,

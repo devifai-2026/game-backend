@@ -1,16 +1,5 @@
 import mongoose from "mongoose";
 
-// Sub-schema for multiple images - removed url field, only store key
-const animationImageSchema = new mongoose.Schema(
-  {
-    key: { type: String, required: true, unique: true },
-    order: { type: Number, default: 0 },
-    filename: String,
-    size: Number,
-  },
-  { _id: true, timestamps: true },
-);
-
 const animationSchema = new mongoose.Schema(
   {
     category: {
@@ -23,17 +12,42 @@ const animationSchema = new mongoose.Schema(
         "offerings_fruits_sweets",
       ],
       trim: true,
-      unique: true,
     },
     title: {
       type: String,
       required: true,
       trim: true,
     },
-    images: [animationImageSchema],
-    totalImages: {
-      type: Number,
-      default: 0,
+    godIdol: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "GodIdol",
+      required: true,
+      index: true,
+    },
+    video: {
+      key: { 
+        type: String, 
+        required: true,
+        trim: true 
+      },
+      url: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      filename: { 
+        type: String, 
+        required: true,
+        trim: true 
+      },
+      size: { 
+        type: Number, 
+        default: 0 
+      },
+      uploadedAt: { 
+        type: Date, 
+        default: Date.now 
+      },
     },
     isActive: {
       type: Boolean,
@@ -48,14 +62,12 @@ const animationSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-// Update totalImages before saving
-animationSchema.pre("save", function (next) {
-  this.totalImages = this.images.length;
-  next();
-});
+// Composite unique index for godIdol + category
+animationSchema.index({ godIdol: 1, category: 1 }, { unique: true });
 
 // Indexes for better performance
 animationSchema.index({ order: 1, category: 1 });
 animationSchema.index({ isActive: 1, order: 1 });
+animationSchema.index({ category: 1, isActive: 1 });
 
 export const Animation = mongoose.model("Animation", animationSchema);

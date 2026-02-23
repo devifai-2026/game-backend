@@ -1,669 +1,724 @@
-import { s3Client, S3_BUCKET } from "../../../config/aws.config.js";
-import { PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { 
+  s3Client, 
+  S3_BUCKET, 
+  PutObjectCommand,
+  DeleteObjectCommand,
+  GetObjectCommand 
+} from "../../../config/aws.config.js";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Animation } from "../../models/animations/animation.model.js";
+import { GodIdol } from "../../models/godIdol/godIdol.model.js";
 import ApiResponse from "../../utils/ApiResponse.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
-import handleMongoErrors from "../../utils/mongooseError.js";
-import yauzl from "yauzl";
-import path from "path";
 import busboy from "busboy";
+import path from "path";
 
-// Category display names
-const CATEGORY_DISPLAY_NAMES = {
-  pouring_water_milk: "Pouring Water/Milk",
-  flower_showers: "Flower Showers",
-  lighting_lamp: "Lighting Lamp",
-  offerings_fruits_sweets: "Offerings Fruits/Sweets",
-};
+// ==================== CREATE ANIMATION ====================
+export const createAnimation = asyncHandler(async (req, res) => {
+  const bb = busboy({ 
+    headers: req.headers, 
+    limits: { 
+      files: 1, 
+      fileSize: 100 * 1024 * 1024 // 100MB
+    } 
+  });
+  
+  const fields = {};
+  let videoFile = null;
+  let uploadError = null;
+  let responseSent = false;
+  
+  // Create a promise to track file upload completion
+  let fileUploadResolve, fileUploadReject;
+  const fileUploadPromise = new Promise((resolve, reject) => {
+    fileUploadResolve = resolve;
+    fileUploadReject = reject;
+  });
 
-// ==================== PRESIGNED URL HELPER ====================
+  // Fields collection
+  bb.on('field', (fieldname, val) => {
+    fields[fieldname] = val;
+  });
 
-const generatePresignedUrl = async (key, expiresIn = 3600) => {
-  try {
-    const command = new GetObjectCommand({ Bucket: S3_BUCKET, Key: key });
-    return await getSignedUrl(s3Client, command, { expiresIn });
-  } catch (error) {
-    console.error("Error generating presigned URL:", error);
-    throw error;
-  }
-};
+  bb.on('file', (fieldname, fileStream, info) => {
+    const { godIdol, category } = fields;
+    
+    // Validate required fields
+    if (!godIdol) {
+      uploadError = new Error("godIdol is required");
+      fileStream.resume();
+      fileUploadReject(uploadError);
+      return;
+    }
 
-// ==================== UPLOAD SECTION ====================
+    if (!category) {
+      uploadError = new Error("category is required");
+      fileStream.resume();
+      fileUploadReject(uploadError);
+      return;
+    }
 
-// Upload ZIP and process images
-export const uploadAnimationZip = asyncHandler(async (req, res) => {
-  try {
-    const bb = busboy({ headers: req.headers });
-    let category = null;
-    let title = null;
-    let animation = null;
-    let zipBuffer = null;
-    let responseSent = false;
+    // Validate category enum
+    const validCategories = [
+      "pouring_water_milk",
+      "flower_showers",
+      "lighting_lamp",
+      "offerings_fruits_sweets"
+    ];
+    
+    if (!validCategories.includes(category)) {
+      uploadError = new Error("Invalid category");
+      fileStream.resume();
+      fileUploadReject(uploadError);
+      return;
+    }
 
-    const sendResponse = (statusCode, data) => {
-      if (!responseSent) {
-        responseSent = true;
-        res.status(statusCode).json(data);
-      }
-    };
+    // Validate ObjectId format
+    const objectIdPattern = /^[0-9a-fA-F]{24}$/;
+    if (!objectIdPattern.test(godIdol)) {
+      uploadError = new Error("Invalid godIdol format - must be a valid MongoDB ObjectId");
+      fileStream.resume();
+      fileUploadReject(uploadError);
+      return;
+    }
 
-    // Handle form fields
-    bb.on("field", (name, val) => {
-      if (name === "category") category = val;
-      if (name === "title") title = val;
-    });
+    // File type validation
+    const { filename, mimeType } = info;
+    if (!mimeType.startsWith('video/')) {
+      uploadError = new Error("Only video files are allowed");
+      fileStream.resume();
+      fileUploadReject(uploadError);
+      return;
+    }
 
-    // Handle file upload
-    bb.on("file", (name, file, info) => {
-      const { filename } = info;
+    // Generate unique filename
+    const timestamp = Date.now();
+    const randomString = Math.random().toString(36).substring(2, 10);
+    const ext = path.extname(filename);
+    const basename = path.basename(filename, ext).replace(/[^a-zA-Z0-9]/g, '-');
+    const key = `animations/${category}/${basename}-${timestamp}-${randomString}${ext}`;
 
-      if (!filename.endsWith(".zip")) {
-        file.resume();
-        return sendResponse(400, { error: "Only ZIP files allowed" });
-      }
-
-      const chunks = [];
-      file.on("data", (chunk) => chunks.push(chunk));
-      file.on("end", () => {
-        zipBuffer = Buffer.concat(chunks);
-      });
-      file.on("error", (err) => {
-        console.error("File stream error:", err);
-        sendResponse(500, { error: "File upload failed" });
-      });
-    });
-
-    // Process after upload complete
-    bb.on("close", async () => {
+    // Collect file data in buffer
+    const chunks = [];
+    fileStream.on('data', (chunk) => chunks.push(chunk));
+    
+    fileStream.on('end', async () => {
       try {
-        // Validate inputs
-        if (!category) return sendResponse(400, { error: "category is required" });
-        if (!title) return sendResponse(400, { error: "title is required" });
-        if (!zipBuffer) return sendResponse(400, { error: "No ZIP file uploaded" });
-
-        // Validate category
-        if (!Object.keys(CATEGORY_DISPLAY_NAMES).includes(category)) {
-          return sendResponse(400, { error: "Invalid category" });
-        }
-
-        // Check existing animation
-        animation = await Animation.findOne({ category });
-
-        // Process ZIP and upload images
-        const folderName = `animations/${category}`;
-        const images = await processAnimationZip(zipBuffer, folderName, S3_BUCKET);
-
-        if (images.length === 0) {
-          return sendResponse(400, { error: "No valid images found in ZIP" });
-        }
-
-        // Create or update animation
-        if (!animation) {
-          animation = new Animation({ category, title, images, totalImages: images.length });
-        } else {
-          animation.title = title;
-          animation.images = images;
-          animation.totalImages = images.length;
-        }
-
-        await animation.save();
-
-        // Generate preview URLs for first 5 images
-        const previewImages = await Promise.all(
-          images.slice(0, 5).map(async (img) => ({
-            id: img._id,
-            url: await generatePresignedUrl(img.key),
-            order: img.order,
-            filename: img.filename,
-          }))
-        );
-
-        sendResponse(200, {
-          success: true,
-          message: `Processed ${images.length} images for ${CATEGORY_DISPLAY_NAMES[category]}`,
-          animation: {
-            id: animation._id,
-            category: animation.category,
-            categoryDisplay: CATEGORY_DISPLAY_NAMES[animation.category],
-            title: animation.title,
-            totalImages: animation.totalImages,
-            previewImages,
-          },
-        });
-      } catch (error) {
-        console.error("Processing error:", error);
-        sendResponse(500, { error: error.message });
-      }
-    });
-
-    bb.on("error", (err) => {
-      console.error("Busboy error:", err);
-      sendResponse(500, { error: "Upload processing failed" });
-    });
-
-    req.pipe(bb);
-  } catch (error) {
-    console.error("Upload error:", error);
-    if (!res.headersSent) res.status(500).json({ error: error.message });
-  }
-});
-
-// Process ZIP and upload to S3
-async function processAnimationZip(zipBuffer, folderName, bucket) {
-  return new Promise((resolve, reject) => {
-    const images = [];
-    let processedCount = 0;
-
-    yauzl.fromBuffer(zipBuffer, { lazyEntries: true }, (err, zipfile) => {
-      if (err) {
-        console.error("Failed to open ZIP:", err);
-        return reject(err);
-      }
-
-      zipfile.readEntry();
-
-      zipfile.on("entry", (entry) => {
-        const ext = path.extname(entry.fileName).toLowerCase();
-        const isImage = [".jpg", ".jpeg", ".png", ".gif", ".webp"].includes(ext);
-
-        if (!isImage || entry.fileName.startsWith("__MACOSX") || entry.fileName.startsWith(".")) {
-          zipfile.readEntry();
+        // Check if godIdol exists
+        const godIdolExists = await GodIdol.findById(godIdol);
+        
+        if (!godIdolExists) {
+          uploadError = new Error("God idol not found with the provided godIdol");
+          fileUploadReject(uploadError);
           return;
         }
 
-        zipfile.openReadStream(entry, async (err, readStream) => {
-          if (err) {
-            console.error(`Error reading ${entry.fileName}:`, err);
-            zipfile.readEntry();
-            return;
-          }
+        // Check if animation already exists for this godIdol and category
+        const existingAnimation = await Animation.findOne({ godIdol, category });
+        if (existingAnimation) {
+          uploadError = new Error(`Animation already exists for this god idol in category: ${category}`);
+          fileUploadReject(uploadError);
+          return;
+        }
 
-          const chunks = [];
-          readStream.on("data", (chunk) => chunks.push(chunk));
-          readStream.on("end", async () => {
-            try {
-              const imageBuffer = Buffer.concat(chunks);
-              const cleanFileName = entry.fileName.split("/").pop();
-              const orderNumber = String(processedCount + 1).padStart(3, "0");
-              const s3Key = `${folderName}/${orderNumber}_${cleanFileName}`;
-
-              // Upload to S3
-              await s3Client.send(
-                new PutObjectCommand({
-                  Bucket: bucket,
-                  Key: s3Key,
-                  Body: imageBuffer,
-                  ContentType: `image/${ext.replace(".", "")}`,
-                  CacheControl: "public, max-age=31536000",
-                })
-              );
-
-              // Store only the key, not the URL
-              images.push({
-                key: s3Key,
-                order: processedCount + 1,
-                filename: cleanFileName,
-                size: imageBuffer.length,
-                uploadedAt: new Date(),
-              });
-
-              processedCount++;
-              zipfile.readEntry();
-            } catch (error) {
-              console.error(`Upload error for ${entry.fileName}:`, error);
-              zipfile.readEntry();
-            }
-          });
-
-          readStream.on("error", (streamError) => {
-            console.error(`Stream error for ${entry.fileName}:`, streamError);
-            zipfile.readEntry();
-          });
+        const fileBuffer = Buffer.concat(chunks);
+        
+        const command = new PutObjectCommand({
+          Bucket: S3_BUCKET,
+          Key: key,
+          Body: fileBuffer,
+          ContentType: mimeType,
         });
-      });
 
-      zipfile.on("end", () => {
-        images.sort((a, b) => a.order - b.order);
-        resolve(images);
-      });
+        const result = await s3Client.send(command);
+        
+        videoFile = {
+          key,
+          url: `https://${S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`,
+          filename,
+          size: fileBuffer.length,
+          mimeType,
+          etag: result.ETag,
+        };
 
-      zipfile.on("error", (zipError) => {
-        console.error("ZIP error:", zipError);
-        reject(zipError);
-      });
+        console.log("Animation video uploaded successfully:", key);
+        fileUploadResolve();
+      } catch (error) {
+        console.error("S3 upload error:", error);
+        uploadError = error;
+        fileUploadReject(error);
+      }
+    });
+
+    fileStream.on('error', (error) => {
+      uploadError = error;
+      fileUploadReject(error);
     });
   });
-}
 
-// ==================== GET FUNCTIONS ====================
+  // Handle finish event
+  bb.on('finish', async () => {
+    if (responseSent) return;
 
-// Get all animations
-export const getAllAnimations = asyncHandler(async (req, res) => {
-  try {
-    const { expiresIn = 3600 } = req.query;
+    try {
+      // Wait for file upload to complete
+      await fileUploadPromise;
 
-    const animations = await Animation.find()
-      .sort({ order: 1, createdAt: -1 })
-      .select("-__v");
+      if (uploadError) {
+        responseSent = true;
+        return res.status(400).json(
+          new ApiResponse(400, null, uploadError.message)
+        );
+      }
 
-    const animationsWithPreviews = await Promise.all(
-      animations.map(async (anim) => {
-        let previewUrl = null;
-        if (anim.images?.length > 0) {
-          previewUrl = await generatePresignedUrl(anim.images[0].key, parseInt(expiresIn));
-        }
-        return {
-          id: anim._id,
-          category: anim.category,
-          categoryDisplay: CATEGORY_DISPLAY_NAMES[anim.category],
-          title: anim.title,
-          totalImages: anim.totalImages,
-          previewImage: previewUrl,
-          isActive: anim.isActive,
-          order: anim.order,
-          createdAt: anim.createdAt,
-          updatedAt: anim.updatedAt,
-        };
-      })
-    );
+      const { godIdol, category, title, order, isActive } = fields;
 
-    return res.status(200).json(
-      new ApiResponse(
-        200,
-        {
-          animations: animationsWithPreviews,
-          urlExpiry: {
-            expiresIn: parseInt(expiresIn),
-            expiresAt: new Date(Date.now() + parseInt(expiresIn) * 1000),
-          },
+      // Create animation in database
+      const animation = await Animation.create({
+        godIdol,
+        category,
+        title,
+        video: {
+          key: videoFile.key,
+          url: videoFile.url,
+          filename: videoFile.filename,
+          size: videoFile.size,
+          uploadedAt: new Date(),
         },
-        "Animations fetched successfully"
-      )
-    );
-  } catch (error) {
-    return handleMongoErrors(error, res);
-  }
-});
+        order: order ? parseInt(order) : 0,
+        isActive: isActive === 'true' || isActive === true,
+      });
 
-// Get active animations
-export const getActiveAnimations = asyncHandler(async (req, res) => {
-  try {
-    const { expiresIn = 3600 } = req.query;
-
-    const animations = await Animation.find({ isActive: true })
-      .sort({ order: 1 })
-      .select("category title images totalImages");
-
-    const animationsWithPreviews = await Promise.all(
-      animations.map(async (anim) => {
-        let previewUrl = null;
-        if (anim.images?.length > 0) {
-          previewUrl = await generatePresignedUrl(anim.images[0].key, parseInt(expiresIn));
+      responseSent = true;
+      return res.status(201).json(
+        new ApiResponse(201, animation, "Animation created successfully")
+      );
+      
+    } catch (error) {
+      // Cleanup if database error occurs
+      if (videoFile?.key) {
+        try {
+          await s3Client.send(new DeleteObjectCommand({
+            Bucket: S3_BUCKET,
+            Key: videoFile.key,
+          }));
+        } catch (cleanupError) {
+          console.error("Cleanup error:", cleanupError);
         }
-        return {
-          id: anim._id,
-          category: anim.category,
-          categoryDisplay: CATEGORY_DISPLAY_NAMES[anim.category],
-          title: anim.title,
-          totalImages: anim.totalImages,
-          previewImage: previewUrl,
-        };
-      })
-    );
+      }
 
-    return res.status(200).json(
-      new ApiResponse(
-        200,
-        {
-          animations: animationsWithPreviews,
-          urlExpiry: {
-            expiresIn: parseInt(expiresIn),
-            expiresAt: new Date(Date.now() + parseInt(expiresIn) * 1000),
-          },
-        },
-        "Active animations fetched"
-      )
-    );
-  } catch (error) {
-    return handleMongoErrors(error, res);
-  }
-});
-
-// Get animation by ID
-export const getAnimationById = asyncHandler(async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { expiresIn = 3600 } = req.query;
-
-    const animation = await Animation.findById(id).select("-__v");
-    if (!animation) {
-      return res.status(404).json(new ApiResponse(404, null, "Animation not found"));
-    }
-
-    const imagesWithUrls = await Promise.all(
-      animation.images.map(async (img) => ({
-        id: img._id,
-        url: await generatePresignedUrl(img.key, parseInt(expiresIn)),
-        order: img.order,
-        filename: img.filename,
-        size: img.size,
-        uploadedAt: img.uploadedAt,
-      }))
-    );
-
-    const response = {
-      id: animation._id,
-      category: animation.category,
-      categoryDisplay: CATEGORY_DISPLAY_NAMES[animation.category],
-      title: animation.title,
-      totalImages: animation.totalImages,
-      images: imagesWithUrls,
-      isActive: animation.isActive,
-      order: animation.order,
-      createdAt: animation.createdAt,
-      updatedAt: animation.updatedAt,
-      urlExpiry: {
-        expiresIn: parseInt(expiresIn),
-        expiresAt: new Date(Date.now() + parseInt(expiresIn) * 1000),
-      },
-    };
-
-    return res.status(200).json(new ApiResponse(200, response, "Animation fetched successfully"));
-  } catch (error) {
-    return handleMongoErrors(error, res);
-  }
-});
-
-// Get animation by category
-export const getAnimationByCategory = asyncHandler(async (req, res) => {
-  try {
-    const { category } = req.params;
-    const { expiresIn = 3600 } = req.query;
-
-    if (!Object.keys(CATEGORY_DISPLAY_NAMES).includes(category)) {
-      return res.status(400).json(new ApiResponse(400, null, "Invalid category"));
-    }
-
-    const animation = await Animation.findOne({ category, isActive: true }).select("-__v");
-    if (!animation) {
-      return res.status(404).json(new ApiResponse(404, null, "Animation not found for this category"));
-    }
-
-    const imagesWithUrls = await Promise.all(
-      animation.images.map(async (img) => ({
-        id: img._id,
-        url: await generatePresignedUrl(img.key, parseInt(expiresIn)),
-        order: img.order,
-        filename: img.filename,
-      }))
-    );
-
-    const response = {
-      id: animation._id,
-      category: animation.category,
-      categoryDisplay: CATEGORY_DISPLAY_NAMES[animation.category],
-      title: animation.title,
-      totalImages: animation.totalImages,
-      images: imagesWithUrls,
-      urlExpiry: {
-        expiresIn: parseInt(expiresIn),
-        expiresAt: new Date(Date.now() + parseInt(expiresIn) * 1000),
-      },
-    };
-
-    return res.status(200).json(new ApiResponse(200, response, "Animation fetched successfully"));
-  } catch (error) {
-    return handleMongoErrors(error, res);
-  }
-});
-
-// ==================== CRUD FUNCTIONS ====================
-
-// Create animation placeholder
-export const createAnimation = asyncHandler(async (req, res) => {
-  try {
-    const { category, title } = req.body;
-
-    if (!category || !title) {
-      return res.status(400).json(new ApiResponse(400, null, "Category and title are required"));
-    }
-
-    if (!Object.keys(CATEGORY_DISPLAY_NAMES).includes(category)) {
-      return res.status(400).json(new ApiResponse(400, null, "Invalid category"));
-    }
-
-    const existingAnimation = await Animation.findOne({ category });
-    if (existingAnimation) {
-      return res.status(409).json(
-        new ApiResponse(409, null, `Animation for ${CATEGORY_DISPLAY_NAMES[category]} already exists`)
+      responseSent = true;
+      return res.status(500).json(
+        new ApiResponse(500, null, error.message || "File upload failed")
       );
     }
+  });
 
-    const animation = await Animation.create({
-      category,
-      title,
-      images: [],
-      totalImages: 0,
+  // Handle busboy error
+  bb.on('error', (error) => {
+    if (responseSent) return;
+    responseSent = true;
+    return res.status(500).json(
+      new ApiResponse(500, null, error.message)
+    );
+  });
+
+  // Pipe the request to busboy
+  req.pipe(bb);
+});
+
+// ==================== UPDATE ANIMATION ====================
+export const updateAnimation = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  
+  // Find existing animation
+  const animation = await Animation.findById(id);
+  if (!animation) {
+    return res.status(404).json(
+      new ApiResponse(404, null, "Animation not found")
+    );
+  }
+
+  const bb = busboy({ 
+    headers: req.headers, 
+    limits: { 
+      files: 1, 
+      fileSize: 100 * 1024 * 1024 
+    } 
+  });
+  
+  const fields = {};
+  let videoFile = null;
+  let uploadError = null;
+  let responseSent = false;
+  
+  let fileUploadResolve, fileUploadReject;
+  const fileUploadPromise = new Promise((resolve, reject) => {
+    fileUploadResolve = resolve;
+    fileUploadReject = reject;
+  });
+
+  bb.on('field', (fieldname, val) => {
+    fields[fieldname] = val;
+  });
+
+  bb.on('file', (fieldname, fileStream, info) => {
+    const { filename, mimeType } = info;
+
+    if (!mimeType.startsWith('video/')) {
+      uploadError = new Error("Only video files are allowed");
+      fileStream.resume();
+      fileUploadReject(uploadError);
+      return;
+    }
+
+    const { category } = fields;
+    const categoryPath = category || animation.category;
+    
+    const timestamp = Date.now();
+    const randomString = Math.random().toString(36).substring(2, 10);
+    const ext = path.extname(filename);
+    const basename = path.basename(filename, ext).replace(/[^a-zA-Z0-9]/g, '-');
+    const key = `animations/${categoryPath}/${basename}-${timestamp}-${randomString}${ext}`;
+
+    const chunks = [];
+    fileStream.on('data', (chunk) => chunks.push(chunk));
+    
+    fileStream.on('end', async () => {
+      try {
+        const fileBuffer = Buffer.concat(chunks);
+        
+        const command = new PutObjectCommand({
+          Bucket: S3_BUCKET,
+          Key: key,
+          Body: fileBuffer,
+          ContentType: mimeType,
+        });
+
+        const result = await s3Client.send(command);
+        
+        videoFile = {
+          key,
+          url: `https://${S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`,
+          filename,
+          size: fileBuffer.length,
+          mimeType,
+          etag: result.ETag,
+        };
+
+        console.log("New animation video uploaded successfully:", key);
+        fileUploadResolve();
+      } catch (error) {
+        console.error("S3 upload error:", error);
+        uploadError = error;
+        fileUploadReject(error);
+      }
     });
 
-    const response = {
-      id: animation._id,
-      category: animation.category,
-      categoryDisplay: CATEGORY_DISPLAY_NAMES[animation.category],
-      title: animation.title,
-      totalImages: 0,
-      message: "Animation created. Upload images using /upload-zip endpoint",
-    };
+    fileStream.on('error', (error) => {
+      uploadError = error;
+      fileUploadReject(error);
+    });
+  });
 
-    return res.status(201).json(new ApiResponse(201, response, "Animation created successfully"));
-  } catch (error) {
-    return handleMongoErrors(error, res);
-  }
+  bb.on('finish', async () => {
+    if (responseSent) return;
+
+    try {
+      // Only wait for file upload if there was a file
+      if (Object.keys(fields).length > 0 || videoFile) {
+        await fileUploadPromise;
+      }
+
+      if (uploadError) {
+        responseSent = true;
+        return res.status(500).json(
+          new ApiResponse(500, null, uploadError.message)
+        );
+      }
+
+      const { godIdol, category, title, order, isActive } = fields;
+
+      // Check for unique constraint if godIdol or category is being changed
+      if ((godIdol || category) && 
+          (godIdol !== animation.godIdol.toString() || 
+           (category && category !== animation.category))) {
+        
+        const newGodIdol = godIdol || animation.godIdol;
+        const newCategory = category || animation.category;
+        
+        const existing = await Animation.findOne({ 
+          godIdol: newGodIdol, 
+          category: newCategory,
+          _id: { $ne: id }
+        });
+        
+        if (existing) {
+          if (videoFile?.key) {
+            await s3Client.send(new DeleteObjectCommand({
+              Bucket: S3_BUCKET,
+              Key: videoFile.key,
+            }));
+          }
+
+          responseSent = true;
+          return res.status(409).json(
+            new ApiResponse(409, null, `Animation already exists for this god idol in category: ${newCategory}`)
+          );
+        }
+      }
+
+      // Update fields
+      if (godIdol) animation.godIdol = godIdol;
+      if (category) animation.category = category;
+      if (title) animation.title = title;
+      if (order !== undefined) animation.order = parseInt(order);
+      if (isActive !== undefined) animation.isActive = isActive === 'true' || isActive === true;
+      
+      // If new video uploaded
+      if (videoFile) {
+        // Delete old video from S3
+        if (animation.video.key) {
+          try {
+            await s3Client.send(new DeleteObjectCommand({
+              Bucket: S3_BUCKET,
+              Key: animation.video.key,
+            }));
+            console.log("Old video deleted from S3:", animation.video.key);
+          } catch (err) {
+            console.error("Error deleting old video:", err);
+          }
+        }
+        
+        // Update with new video
+        animation.video = {
+          key: videoFile.key,
+          url: videoFile.url,
+          filename: videoFile.filename,
+          size: videoFile.size,
+          uploadedAt: new Date(),
+        };
+      }
+
+      await animation.save();
+
+      responseSent = true;
+      return res.status(200).json(
+        new ApiResponse(200, animation, "Animation updated successfully")
+      );
+    } catch (error) {
+      responseSent = true;
+      return res.status(500).json(
+        new ApiResponse(500, null, error.message || "Update failed")
+      );
+    }
+  });
+
+  bb.on('error', (error) => {
+    if (responseSent) return;
+    responseSent = true;
+    return res.status(500).json(
+      new ApiResponse(500, null, error.message)
+    );
+  });
+
+  req.pipe(bb);
 });
 
-// Update animation
-export const updateAnimation = asyncHandler(async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { title, isActive, order } = req.body;
-
-    const updateData = {};
-    if (title !== undefined) updateData.title = title;
-    if (isActive !== undefined) updateData.isActive = isActive;
-    if (order !== undefined) updateData.order = order;
-
-    const animation = await Animation.findByIdAndUpdate(id, updateData, {
-      new: true,
-      runValidators: true,
-    }).select("-__v");
-
-    if (!animation) {
-      return res.status(404).json(new ApiResponse(404, null, "Animation not found"));
-    }
-
-    let previewUrl = null;
-    if (animation.images?.length > 0) {
-      previewUrl = await generatePresignedUrl(animation.images[0].key);
-    }
-
-    const response = {
-      id: animation._id,
-      category: animation.category,
-      categoryDisplay: CATEGORY_DISPLAY_NAMES[animation.category],
-      title: animation.title,
-      totalImages: animation.totalImages,
-      previewImage: previewUrl,
-      isActive: animation.isActive,
-      order: animation.order,
-    };
-
-    return res.status(200).json(new ApiResponse(200, response, "Animation updated successfully"));
-  } catch (error) {
-    return handleMongoErrors(error, res);
-  }
-});
-
-// Delete animation
+// ==================== DELETE ANIMATION ====================
 export const deleteAnimation = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
-    const animation = await Animation.findByIdAndDelete(id);
-
+    const animation = await Animation.findById(id);
+    
     if (!animation) {
-      return res.status(404).json(new ApiResponse(404, null, "Animation not found"));
+      return res.status(404).json(
+        new ApiResponse(404, null, "Animation not found")
+      );
     }
 
-    return res.status(200).json(new ApiResponse(200, null, "Animation deleted successfully"));
+    // Delete video from S3
+    if (animation.video && animation.video.key) {
+      try {
+        await s3Client.send(new DeleteObjectCommand({
+          Bucket: S3_BUCKET,
+          Key: animation.video.key,
+        }));
+        console.log("Video deleted from S3:", animation.video.key);
+      } catch (err) {
+        console.error("Error deleting video from S3:", err);
+      }
+    }
+
+    await animation.deleteOne();
+    
+    return res.status(200).json(
+      new ApiResponse(200, null, "Animation deleted successfully")
+    );
   } catch (error) {
-    return handleMongoErrors(error, res);
+    return res.status(500).json(
+      new ApiResponse(500, null, error.message)
+    );
   }
 });
 
-// Toggle animation status
+// ==================== GET ALL ANIMATIONS ====================
+export const getAllAnimations = asyncHandler(async (req, res) => {
+  try {
+    const animations = await Animation.find()
+      .populate({
+        path: 'godIdol',
+        populate: {
+          path: 'godId',
+          select: 'name category'
+        }
+      })
+      .sort({ order: 1, createdAt: -1 });
+    
+    // Generate pre-signed URLs
+    const animationsWithUrls = await Promise.all(
+      animations.map(async (anim) => {
+        const animObj = anim.toObject();
+        
+        try {
+          const command = new GetObjectCommand({
+            Bucket: S3_BUCKET,
+            Key: anim.video.key,
+          });
+          
+          const signedUrl = await getSignedUrl(s3Client, command, { 
+            expiresIn: 3600 // 1 hour
+          });
+          
+          animObj.video.signedUrl = signedUrl;
+          
+        } catch (urlError) {
+          console.error("Error generating signed URL for:", anim.video.key, urlError);
+          animObj.video.signedUrl = null;
+        }
+        
+        return animObj;
+      })
+    );
+    
+    return res.status(200).json(
+      new ApiResponse(200, animationsWithUrls, "Animations fetched successfully")
+    );
+  } catch (error) {
+    return res.status(500).json(
+      new ApiResponse(500, null, error.message)
+    );
+  }
+});
+
+// ==================== GET ANIMATION BY ID ====================
+export const getAnimationById = asyncHandler(async (req, res) => {
+  try {
+    const { id } = req.params;
+    const animation = await Animation.findById(id)
+      .populate({
+        path: 'godIdol',
+        populate: {
+          path: 'godId',
+          select: 'name category'
+        }
+      });
+    
+    if (!animation) {
+      return res.status(404).json(
+        new ApiResponse(404, null, "Animation not found")
+      );
+    }
+    
+    const animObj = animation.toObject();
+    
+    // Generate pre-signed URL
+    try {
+      const command = new GetObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: animation.video.key,
+      });
+      
+      const signedUrl = await getSignedUrl(s3Client, command, { 
+        expiresIn: 3600 
+      });
+      
+      animObj.video.signedUrl = signedUrl;
+    } catch (urlError) {
+      console.error("Error generating signed URL:", urlError);
+      animObj.video.signedUrl = null;
+    }
+    
+    return res.status(200).json(
+      new ApiResponse(200, animObj, "Animation fetched successfully")
+    );
+  } catch (error) {
+    return res.status(500).json(
+      new ApiResponse(500, null, error.message)
+    );
+  }
+});
+
+// ==================== GET ANIMATIONS BY GOD IDOL ====================
+export const getAnimationsByGodIdol = asyncHandler(async (req, res) => {
+  try {
+    const { godIdolId } = req.params;
+    
+    const animations = await Animation.find({ godIdol: godIdolId })
+      .populate({
+        path: 'godIdol',
+        populate: {
+          path: 'godId',
+          select: 'name category'
+        }
+      })
+      .sort({ order: 1, category: 1 });
+    
+    // Generate pre-signed URLs
+    const animationsWithUrls = await Promise.all(
+      animations.map(async (anim) => {
+        const animObj = anim.toObject();
+        
+        try {
+          const command = new GetObjectCommand({
+            Bucket: S3_BUCKET,
+            Key: anim.video.key,
+          });
+          
+          const signedUrl = await getSignedUrl(s3Client, command, { 
+            expiresIn: 3600
+          });
+          
+          animObj.video.signedUrl = signedUrl;
+        } catch (urlError) {
+          console.error("Error generating signed URL:", urlError);
+          animObj.video.signedUrl = null;
+        }
+        
+        return animObj;
+      })
+    );
+    
+    return res.status(200).json(
+      new ApiResponse(200, animationsWithUrls, "Animations fetched successfully")
+    );
+  } catch (error) {
+    return res.status(500).json(
+      new ApiResponse(500, null, error.message)
+    );
+  }
+});
+
+// ==================== GET ANIMATIONS BY CATEGORY ====================
+export const getAnimationsByCategory = asyncHandler(async (req, res) => {
+  try {
+    const { category } = req.params;
+    
+    // Validate category
+    const validCategories = [
+      "pouring_water_milk",
+      "flower_showers",
+      "lighting_lamp",
+      "offerings_fruits_sweets"
+    ];
+    
+    if (!validCategories.includes(category)) {
+      return res.status(400).json(
+        new ApiResponse(400, null, "Invalid category")
+      );
+    }
+    
+    const animations = await Animation.find({ category, isActive: true })
+    
+    // Generate pre-signed URLs
+    const animationsWithUrls = await Promise.all(
+      animations.map(async (anim) => {
+        const animObj = anim.toObject();
+        
+        try {
+          const command = new GetObjectCommand({
+            Bucket: S3_BUCKET,
+            Key: anim.video.key,
+          });
+          
+          const signedUrl = await getSignedUrl(s3Client, command, { 
+            expiresIn: 3600
+          });
+          
+          animObj.video.signedUrl = signedUrl;
+        } catch (urlError) {
+          console.error("Error generating signed URL:", urlError);
+          animObj.video.signedUrl = null;
+        }
+        
+        return animObj;
+      })
+    );
+    
+    return res.status(200).json(
+      new ApiResponse(200, animationsWithUrls, "Animations fetched successfully")
+    );
+  } catch (error) {
+    return res.status(500).json(
+      new ApiResponse(500, null, error.message)
+    );
+  }
+});
+
+// ==================== TOGGLE ANIMATION STATUS ====================
 export const toggleAnimationStatus = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
-
     const animation = await Animation.findById(id);
+    
     if (!animation) {
-      return res.status(404).json(new ApiResponse(404, null, "Animation not found"));
+      return res.status(404).json(
+        new ApiResponse(404, null, "Animation not found")
+      );
     }
 
     animation.isActive = !animation.isActive;
     await animation.save();
 
-    const status = animation.isActive ? "activated" : "deactivated";
     return res.status(200).json(
-      new ApiResponse(200, { id: animation._id, isActive: animation.isActive }, `Animation ${status} successfully`)
+      new ApiResponse(200, animation, `Animation ${animation.isActive ? 'activated' : 'deactivated'}`)
     );
   } catch (error) {
-    return handleMongoErrors(error, res);
+    return res.status(500).json(
+      new ApiResponse(500, null, error.message)
+    );
   }
 });
 
-// ==================== ADDITIONAL HELPER FUNCTIONS (like godIdol controller) ====================
-
-// Get presigned URL for a single image by its ID
-export const getPresignedAnimationImageUrl = asyncHandler(async (req, res) => {
+// ==================== UPDATE ORDER ====================
+export const updateAnimationOrder = asyncHandler(async (req, res) => {
   try {
-    const { imageId } = req.params;
-    const { expiresIn = 3600 } = req.query;
-
-    const animation = await Animation.findOne({ "images._id": imageId });
+    const { id } = req.params;
+    const { order } = req.body;
+    
+    if (order === undefined || order < 0) {
+      return res.status(400).json(
+        new ApiResponse(400, null, "Valid order number is required")
+      );
+    }
+    
+    const animation = await Animation.findById(id);
     
     if (!animation) {
-      return res.status(404).json({ error: "Image not found" });
+      return res.status(404).json(
+        new ApiResponse(404, null, "Animation not found")
+      );
     }
 
-    const image = animation.images.id(imageId);
-    
-    if (!image || !image.key) {
-      return res.status(404).json({ error: "Image key not found" });
-    }
+    animation.order = order;
+    await animation.save();
 
-    const url = await generatePresignedUrl(image.key, parseInt(expiresIn));
-
-    res.json({
-      success: true,
-      url,
-      key: image.key,
-      expiresIn: parseInt(expiresIn),
-      expiresAt: new Date(Date.now() + parseInt(expiresIn) * 1000),
-    });
-
-  } catch (error) {
-    console.error("Error generating presigned URL:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Get paginated animation images
-export const getAnimationImagesPaginated = asyncHandler(async (req, res) => {
-  try {
-    const { category } = req.params;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const expiresIn = parseInt(req.query.expiresIn) || 3600;
-    const skip = (page - 1) * limit;
-
-    const animation = await Animation.findOne({ category, isActive: true });
-
-    if (!animation) {
-      return res.status(404).json({ error: "Animation not found" });
-    }
-
-    const totalImages = animation.images.length;
-    const paginatedImages = animation.images
-      .sort((a, b) => a.order - b.order)
-      .slice(skip, skip + limit);
-
-    const imagesWithUrls = await Promise.all(
-      paginatedImages.map(async (img) => ({
-        id: img._id,
-        url: await generatePresignedUrl(img.key, expiresIn),
-        key: img.key,
-        order: img.order,
-        filename: img.filename,
-        size: img.size,
-      }))
+    return res.status(200).json(
+      new ApiResponse(200, animation, "Animation order updated successfully")
     );
-
-    res.status(200).json({
-      success: true,
-      animation: {
-        id: animation._id,
-        category: animation.category,
-        categoryDisplay: CATEGORY_DISPLAY_NAMES[animation.category],
-        title: animation.title,
-      },
-      pagination: {
-        page,
-        limit,
-        totalImages,
-        totalPages: Math.ceil(totalImages / limit),
-        hasNextPage: page < Math.ceil(totalImages / limit),
-        hasPrevPage: page > 1,
-      },
-      images: imagesWithUrls,
-      urlExpiry: {
-        expiresIn,
-        expiresAt: new Date(Date.now() + expiresIn * 1000),
-      },
-    });
   } catch (error) {
-    console.error("Error:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Batch generate presigned URLs for animation images
-export const batchGenerateAnimationUrls = asyncHandler(async (req, res) => {
-  try {
-    const { keys } = req.body;
-    const { expiresIn = 3600 } = req.query;
-
-    if (!keys || !Array.isArray(keys)) {
-      return res.status(400).json({ error: "keys array is required" });
-    }
-
-    const urls = await Promise.all(
-      keys.map(async (key) => {
-        const url = await generatePresignedUrl(key, parseInt(expiresIn));
-        return { key, url };
-      })
+    return res.status(500).json(
+      new ApiResponse(500, null, error.message)
     );
-
-    res.json({
-      success: true,
-      urls,
-      count: urls.length,
-      expiresIn: parseInt(expiresIn),
-      expiresAt: new Date(Date.now() + parseInt(expiresIn) * 1000),
-    });
-
-  } catch (error) {
-    console.error("Error generating batch URLs:", error);
-    res.status(500).json({ error: error.message });
   }
 });

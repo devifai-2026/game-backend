@@ -1,4 +1,9 @@
-import { S3Client } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  GetObjectCommand,
+} from "@aws-sdk/client-s3";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -13,3 +18,6 @@ export const s3Client = new S3Client({
 });
 
 export const S3_BUCKET = process.env.AWS_S3_BUCKET;
+
+// Export commands directly
+export { PutObjectCommand, DeleteObjectCommand, GetObjectCommand };

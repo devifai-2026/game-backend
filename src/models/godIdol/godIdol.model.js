@@ -1,34 +1,49 @@
 import mongoose from "mongoose";
 
-const imageSchema = new mongoose.Schema(
-  {
-    url: { type: String, required: true },
-    key: { type: String, required: true, unique: true },
-    order: { type: Number, default: 0 },
-    filename: String,
-    size: Number,
-  },
-  { _id: true, timestamps: true },
-);
-
 const godIdolSchema = new mongoose.Schema(
   {
     godId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "God",
       required: true,
-      index: true,
+      unique: true,
     },
-    images: [imageSchema],
-    folderName: String,
-    totalImages: { type: Number, default: 0 },
+    video: {
+      key: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      url: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      filename: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      size: {
+        type: Number,
+        default: 0,
+      },
+      uploadedAt: {
+        type: Date,
+        default: Date.now,
+      },
+    },
+    // folderName field removed as requested
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
   },
   { timestamps: true },
 );
 
-godIdolSchema.pre("save", function (next) {
-  this.totalImages = this.images.length;
-  next();
-});
+// Index for faster queries
+godIdolSchema.index({ godId: 1 });
+godIdolSchema.index({ isActive: 1 });
 
 export const GodIdol = mongoose.model("GodIdol", godIdolSchema);
