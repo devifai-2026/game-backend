@@ -7,7 +7,8 @@ const app = express();
 const allowedOrigins = [
   "http://localhost:3000", // local dev (user)
   "http://localhost:5174", // local dev (admin)
-  "https://gameadmin-v.netlify.app", // local dev (admin)
+  "https://gameadmin-v.netlify.app", // admin dashboard
+  "https://devifai.website", // production domain
 ];
 
 app.use(
@@ -20,13 +21,14 @@ app.use(
       }
     },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
-
-// Normal body parsers (used for all other routes)
-app.use(express.json({ limit: "16kb" }));
-app.use(express.urlencoded({ extended: true, limit: "16kb" }));
+// Body parsers with increased limits for file uploads
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(express.static("public"));
 
 // Other routes
