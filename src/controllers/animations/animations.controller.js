@@ -12,6 +12,7 @@ import ApiResponse from "../../utils/ApiResponse.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 import busboy from "busboy";
 import path from "path";
+import { AnimationCategory } from "../../models/animations/animationCategory.model.js";
 
 // ==================== CREATE ANIMATION ====================
 export const createAnimation = asyncHandler(async (req, res) => {
@@ -58,20 +59,9 @@ export const createAnimation = asyncHandler(async (req, res) => {
       return;
     }
 
-    // Validate category enum
-    const validCategories = [
-      "pouring_water_milk",
-      "flower_showers",
-      "lighting_lamp",
-      "offerings_fruits_sweets"
-    ];
-    
-    if (!validCategories.includes(category)) {
-      uploadError = new Error("Invalid category");
-      fileStream.resume();
-      fileUploadReject(uploadError);
-      return;
-    }
+    // Wait to validate category in 'end' event where we have async access and avoids stream race conditions
+    // The previous implementation tried to await here, which caused a SyntaxError.
+    // We already check for godIdol and category existence in fields above.
 
     // Validate ObjectId format
     const objectIdPattern = /^[0-9a-fA-F]{24}$/;
@@ -104,6 +94,14 @@ export const createAnimation = asyncHandler(async (req, res) => {
     
     fileStream.on('end', async () => {
       try {
+        // Validate category exists in database
+        const categoryExists = await AnimationCategory.findById(category);
+        if (!categoryExists) {
+          uploadError = new Error("Invalid category ID - category not found");
+          fileUploadReject(uploadError);
+          return;
+        }
+
         // Check if godIdol exists
         const godIdolExists = await GodIdol.findById(godIdol);
         
@@ -113,13 +111,7 @@ export const createAnimation = asyncHandler(async (req, res) => {
           return;
         }
 
-        // Check if animation already exists for this godIdol and category
-        const existingAnimation = await Animation.findOne({ godIdol, category });
-        if (existingAnimation) {
-          uploadError = new Error(`Animation already exists for this god idol in category: ${category}`);
-          fileUploadReject(uploadError);
-          return;
-        }
+        // No duplicate restriction — unlimited animations per god idol allowed
 
         const fileBuffer = Buffer.concat(chunks);
         
@@ -473,6 +465,7 @@ export const getAllAnimations = asyncHandler(async (req, res) => {
           select: 'name category'
         }
       })
+      .populate('category', 'name icon')
       .sort({ order: 1, createdAt: -1 });
     
     // Generate pre-signed URLs
@@ -572,6 +565,7 @@ export const getAnimationsByGodIdol = asyncHandler(async (req, res) => {
           select: 'name category'
         }
       })
+      .populate('category', 'name icon')
       .sort({ order: 1, category: 1 });
     
     // Generate pre-signed URLs

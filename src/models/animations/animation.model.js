@@ -74,8 +74,8 @@ const animationSchema = new mongoose.Schema(
 );
 
 
-animationSchema.index({ category: 1, godIdol: 1, order: 1 });
-animationSchema.index({ godIdol: 1, category: 1 });
+animationSchema.index({ godIdol: 1, order: 1 });       // fetch by idol
+animationSchema.index({ category: 1 });                 // fetch by category
 animationSchema.index({ isActive: 1, order: 1 });
 
 export const Animation = mongoose.model("Animation", animationSchema);

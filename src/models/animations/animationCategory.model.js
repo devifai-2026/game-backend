@@ -8,6 +8,12 @@ const animationCategorySchema = new mongoose.Schema(
       unique: true,
       trim: true,
     },
+    slug: {
+      type: String,
+      unique: true,
+      trim: true,
+      sparse: true,
+    },
     icon: {
       type: String,
       required: true,
@@ -28,5 +34,17 @@ const animationCategorySchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Auto-generate slug from name before saving
+animationCategorySchema.pre("save", function (next) {
+  if (this.isModified("name") || !this.slug) {
+    this.slug = this.name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+  }
+  next();
+});
 
 export const AnimationCategory = mongoose.model("AnimationCategory", animationCategorySchema);

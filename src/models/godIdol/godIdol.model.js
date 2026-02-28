@@ -43,7 +43,6 @@ const godIdolSchema = new mongoose.Schema(
 );
 
 // Index for faster queries
-godIdolSchema.index({ godId: 1 });
 godIdolSchema.index({ isActive: 1 });
 
 export const GodIdol = mongoose.model("GodIdol", godIdolSchema);
