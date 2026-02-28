@@ -150,6 +150,19 @@ export const loginUser = asyncHandler(async (req, res) => {
       }
     );
 
+    // Generate Refresh Token
+    const refreshToken = jwt.sign(
+      {
+        id: user._id,
+        email: user.email,
+        role: "user",
+      },
+      process.env.REFRESH_TOKEN_SECRET || process.env.ACCESS_TOKEN_SECRET,
+      {
+        expiresIn: "7d",
+      }
+    );
+
     // Prepare response data
     const userData = {
       _id: user._id,
@@ -159,11 +172,86 @@ export const loginUser = asyncHandler(async (req, res) => {
       isVerified: user.isVerified,
       lastLogin: user.lastLogin,
       token,
+      refreshToken,
     };
 
     return res
       .status(200)
       .json(new ApiResponse(200, userData, "Login successful"));
+  } catch (error) {
+    return handleMongoErrors(error, res);
+  }
+});
+
+// Refresh token
+export const refreshUserToken = asyncHandler(async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      return res
+        .status(401)
+        .json(new ApiResponse(401, null, "Refresh token is required"));
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(
+        refreshToken,
+        process.env.REFRESH_TOKEN_SECRET || process.env.ACCESS_TOKEN_SECRET
+      );
+    } catch (error) {
+      return res
+        .status(401)
+        .json(new ApiResponse(401, null, "Invalid or expired refresh token"));
+    }
+
+    if (decoded.role !== "user") {
+      return res
+        .status(401)
+        .json(new ApiResponse(401, null, "Invalid token role"));
+    }
+
+    const user = await User.findById(decoded.id);
+    if (!user || !user.isActive) {
+      return res
+        .status(401)
+        .json(new ApiResponse(401, null, "User not found or inactive"));
+    }
+
+    const newToken = jwt.sign(
+      {
+        id: user._id,
+        email: user.email,
+        role: "user",
+      },
+      process.env.ACCESS_TOKEN_SECRET,
+      {
+        expiresIn: process.env.ACCESS_TOKEN_EXPIRY || "24h",
+      }
+    );
+
+    const newRefreshToken = jwt.sign(
+      {
+        id: user._id,
+        email: user.email,
+        role: "user",
+      },
+      process.env.REFRESH_TOKEN_SECRET || process.env.ACCESS_TOKEN_SECRET,
+      {
+        expiresIn: "7d",
+      }
+    );
+
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          { token: newToken, refreshToken: newRefreshToken },
+          "Token refreshed successfully"
+        )
+      );
   } catch (error) {
     return handleMongoErrors(error, res);
   }

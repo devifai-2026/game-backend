@@ -12,6 +12,7 @@ import {
   uploadToGallery,
   getUserGallery,
   deleteFromGallery,
+  refreshUserToken,
 } from "../../controllers/user/userController.js";
 import { verifyUser } from "../../middleware/authMiddleware.js";
 
@@ -23,6 +24,7 @@ router.post("/login", loginUser);
 router.post("/forgot-password", forgotUserPassword);
 router.post("/verify-otp", verifyUserOtp);
 router.post("/reset-password", resetUserPassword);
+router.post("/refresh-token", refreshUserToken);
 
 // Protected routes (require user authentication)
 router.get("/profile", verifyUser, getUserProfile);
