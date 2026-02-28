@@ -8,6 +8,7 @@ import {
   updateGodIdol,
   deleteGodIdol,
   toggleGodIdolStatus,
+  createGodIdolWithAnimation,
 } from "../../controllers/godIdol/godIdol.controller.js";
 
 const router = express.Router();
@@ -18,6 +19,7 @@ router.get("/god/:godId", getGodIdolByGodId); // Get by God ID
 
 // CRUD operations
 router.post("/", createGodIdol);
+router.post("/with-animation", createGodIdolWithAnimation);
 router.get("/", getAllGodIdols);
 router.get("/:id", getGodIdolById);
 router.put("/:id", updateGodIdol);

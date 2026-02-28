@@ -26,8 +26,6 @@ router.get("/godIdol/:godIdolId", getAnimationsByGodIdol);
 // Get animations by category
 router.get("/category/:category", getAnimationsByCategory);
 
-// ==================== PROTECTED ROUTES ====================
-// (Add authentication middleware as needed)
 
 // Create new animation
 router.post("/", createAnimation);

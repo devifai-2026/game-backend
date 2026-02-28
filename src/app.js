@@ -15,6 +15,7 @@ app.use(express.static("public"));
 // Other routes
 import adminRoutes from "./routes/admin/admin.routes.js";
 import animationRoutes from "./routes/animations/animations.routes.js";
+import animationCategoryRoutes from "./routes/animations/animationCategory.routes.js";
 import godRoutes from "./routes/god/god.routes.js";
 import godIdolRoutes from "./routes/godIdol/godIdol.routes.js";
 import splashRoutes from "./routes/splash/splash.routes.js";
@@ -24,6 +25,7 @@ import userRoutes from "./routes/user/user.routes.js";
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/animations", animationRoutes);
+app.use("/api/v1/animation-categories", animationCategoryRoutes);
 app.use("/api/v1/gods", godRoutes);
 app.use("/api/v1/god-idol", godIdolRoutes);
 app.use("/api/v1/splash", splashRoutes);

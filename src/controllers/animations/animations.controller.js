@@ -612,23 +612,18 @@ export const getAnimationsByGodIdol = asyncHandler(async (req, res) => {
 // ==================== GET ANIMATIONS BY CATEGORY ====================
 export const getAnimationsByCategory = asyncHandler(async (req, res) => {
   try {
-    const { category } = req.params;
+    const { categoryId } = req.params; 
     
-    // Validate category
-    const validCategories = [
-      "pouring_water_milk",
-      "flower_showers",
-      "lighting_lamp",
-      "offerings_fruits_sweets"
-    ];
-    
-    if (!validCategories.includes(category)) {
-      return res.status(400).json(
-        new ApiResponse(400, null, "Invalid category")
-      );
-    }
-    
-    const animations = await Animation.find({ category, isActive: true })
+    const animations = await Animation.find({ category: categoryId, isActive: true })
+      .populate({
+        path: 'godIdol',
+        populate: {
+          path: 'godId',
+          select: 'name'
+        }
+      })
+      .populate('category', 'name icon') 
+      .sort({ order: 1 });
     
     // Generate pre-signed URLs
     const animationsWithUrls = await Promise.all(
@@ -722,3 +717,4 @@ export const updateAnimationOrder = asyncHandler(async (req, res) => {
     );
   }
 });
+

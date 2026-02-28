@@ -3,26 +3,25 @@ import mongoose from "mongoose";
 const animationSchema = new mongoose.Schema(
   {
     category: {
-      type: String,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "AnimationCategory",
       required: true,
-      enum: [
-        "pouring_water_milk",
-        "flower_showers",
-        "lighting_lamp",
-        "offerings_fruits_sweets",
-      ],
-      trim: true,
-    },
-    title: {
-      type: String,
-      required: true,
-      trim: true,
+      index: true,
     },
     godIdol: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "GodIdol",
       required: true,
       index: true,
+    },
+    title: {
+      type: String,
+      required: false,
+      trim: true,
+    },
+    description: {
+      type: String,
+      required: false
     },
     video: {
       key: { 
@@ -49,6 +48,14 @@ const animationSchema = new mongoose.Schema(
         default: Date.now 
       },
     },
+    thumbnail: {
+      key: String,
+      url: String,
+    },
+    duration: {
+      type: Number, // seconds
+      default: 0,
+    },
     isActive: {
       type: Boolean,
       default: true,
@@ -58,16 +65,17 @@ const animationSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    views: {
+      type: Number,
+      default: 0,
+    },
   },
-  { timestamps: true },
+  { timestamps: true }
 );
 
-// Composite unique index for godIdol + category
-animationSchema.index({ godIdol: 1, category: 1 }, { unique: true });
 
-// Indexes for better performance
-animationSchema.index({ order: 1, category: 1 });
+animationSchema.index({ category: 1, godIdol: 1, order: 1 });
+animationSchema.index({ godIdol: 1, category: 1 });
 animationSchema.index({ isActive: 1, order: 1 });
-animationSchema.index({ category: 1, isActive: 1 });
 
 export const Animation = mongoose.model("Animation", animationSchema);
